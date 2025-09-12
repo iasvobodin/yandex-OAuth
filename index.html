@@ -6,7 +6,6 @@
     <title>Загрузка на общий диск</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* Стили не изменились */
         body {
             font-family: Arial, sans-serif;
             padding: 15px;
@@ -150,7 +149,7 @@
 
     <script>
         const AUTH_URL = '/api/auth';
-        const GET_UPLOAD_URL = '/api/get-upload-url'; // Новый эндпоинт
+        const GET_UPLOAD_URL = '/api/get-upload-url';
 
         let filesToUpload = [];
         let folderName = 'Фото';
@@ -218,8 +217,6 @@
             filesToUpload.forEach(file => {
                 const div = document.createElement("div");
                 div.className = "thumb";
-                const img = document.createElement("img");
-                img.src = URL.createObjectURL(file);
                 const infoDiv = document.createElement("div");
                 infoDiv.className = "file-info";
                 infoDiv.textContent = file.name;
@@ -231,15 +228,61 @@
                 const statusDiv = document.createElement("div");
                 statusDiv.className = "status waiting";
                 statusDiv.textContent = "⏳ Ожидает";
-                div.appendChild(img);
                 div.appendChild(infoDiv);
                 div.appendChild(progressContainer);
                 div.appendChild(statusDiv);
+
+                // Проверяем тип файла для отображения превью
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement("img");
+                    img.src = URL.createObjectURL(file);
+                    div.prepend(img);
+                } else if (file.type.startsWith('video/')) {
+                    // Создаем превью для видео
+                    createVideoThumbnail(file, img => {
+                        div.prepend(img);
+                    });
+                } else {
+                    // Заглушка для других типов файлов
+                    const icon = document.createElement("div");
+                    icon.textContent = "📎";
+                    icon.style.fontSize = "50px";
+                    icon.style.height = "150px";
+                    icon.style.display = "flex";
+                    icon.style.alignItems = "center";
+                    icon.style.justifyContent = "center";
+                    div.prepend(icon);
+                }
+
                 previewDiv.appendChild(div);
                 file._statusEl = statusDiv;
                 file._progressEl = progressBar;
             });
         };
+
+        // Новая функция для создания превью видео
+        function createVideoThumbnail(file, callback) {
+            const video = document.createElement('video');
+            video.preload = 'metadata';
+            video.onloadedmetadata = function () {
+                video.currentTime = 1; // Берем кадр на 1 секунде
+            };
+            video.onseeked = function () {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const img = document.createElement("img");
+                img.src = canvas.toDataURL('image/jpeg');
+                img.onload = () => {
+                    URL.revokeObjectURL(video.src);
+                    callback(img);
+                };
+            };
+            video.src = URL.createObjectURL(file);
+        }
 
         uploadBtn.onclick = async () => {
             if (filesToUpload.length === 0) {
@@ -254,7 +297,6 @@
                     file._statusEl.textContent = "⬆ Загрузка...";
                     file._progressEl.style.width = "0%";
 
-                    // 1. Получаем подписанный URL от нашего сервера
                     const getUrlRes = await fetch(GET_UPLOAD_URL, {
                         method: 'POST',
                         headers: {
@@ -274,7 +316,6 @@
 
                     const { uploadUrl, newFileName } = await getUrlRes.json();
 
-                    // 2. Используем XMLHttpRequest для отслеживания прогресса
                     await new Promise((resolve, reject) => {
                         const xhr = new XMLHttpRequest();
                         xhr.open('PUT', uploadUrl, true);
