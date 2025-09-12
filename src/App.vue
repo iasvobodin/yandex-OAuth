@@ -130,7 +130,7 @@ const checkQueues = async () => {
         
         // Теперь data содержит JSON-ответ, и его можно использовать
         log(`✅ Очереди получены`);
-        log(JSON.stringify(data, null, 2)); // Выводим отформатированный JSON
+        log(JSON.stringify(data.map(item => item.name), null, 2)); // Выводим отформатированный JSON
         
   } catch (err) {
     log('❌ Произошла Ошибка работы с трекером');
