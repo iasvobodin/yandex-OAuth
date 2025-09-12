@@ -114,7 +114,10 @@ const checkAuthStatus = async () => {
     isAuthorized.value = false;
   }
 };
-
+interface QueueItem {
+  name: string;
+  // добавьте другие свойства, которые вам нужны, чтобы избежать ошибок в будущем
+}
 // проверка очереди в трекере
 const checkQueues = async () => {
   try {
@@ -126,11 +129,11 @@ const checkQueues = async () => {
       return
     }
      // Получаем данные в формате JSON
-        const data = await res.json();
-        
+        const data: QueueItem[] = await res.json();
+       const names = data.map(item => item.name); // Ошибка исчезнет, так как item теперь имеет тип QueueItem
         // Теперь data содержит JSON-ответ, и его можно использовать
         log(`✅ Очереди получены`);
-        log(JSON.stringify(data.map(item => item.name), null, 2)); // Выводим отформатированный JSON
+        log(JSON.stringify(names, null, 2)); // Выводим отформатированный JSON
         
   } catch (err) {
     log('❌ Произошла Ошибка работы с трекером');
