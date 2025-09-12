@@ -44,6 +44,12 @@
             background: #357abd;
         }
 
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* Добавили стиль для неактивной кнопки */
         #preview {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -133,8 +139,9 @@
     <div id="controls">
         <input type="file" id="fileInput" accept="image/*,video/*" multiple capture="environment"
             style="display:none" />
-        <button id="selectBtn">Выбрать фотографии</button>
-        <button id="uploadBtn">Загрузить выбранные фото</button>
+        <button id="authBtn">Авторизоваться</button>
+        <button id="selectBtn" disabled>Выбрать фотографии</button>
+        <button id="uploadBtn" disabled>Загрузить выбранные фото</button>
     </div>
 
     <div id="preview"></div>
@@ -156,8 +163,41 @@
         const output = document.getElementById("output");
         function log(msg) { output.textContent += msg + "\n"; }
 
+        const authBtn = document.getElementById("authBtn");
+        const selectBtn = document.getElementById("selectBtn");
+        const uploadBtn = document.getElementById("uploadBtn");
         const fileInput = document.getElementById("fileInput");
-        document.getElementById("selectBtn").onclick = () => fileInput.click();
+
+        // Инициализация - проверяем статус авторизации
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch(AUTH_URL, { method: 'HEAD' });
+                if (res.ok) {
+                    log("✅ Авторизация успешна!");
+                    authBtn.style.display = 'none'; // Скрываем кнопку авторизации
+                    selectBtn.disabled = false;
+                    uploadBtn.disabled = false;
+                } else {
+                    log("⚠️ Требуется авторизация.");
+                    authBtn.style.display = 'block'; // Показываем кнопку авторизации
+                    selectBtn.disabled = true;
+                    uploadBtn.disabled = true;
+                }
+            } catch (err) {
+                log("❌ Произошла ошибка при проверке авторизации.");
+                authBtn.style.display = 'block';
+            }
+        }
+
+        // Вызываем проверку при загрузке страницы
+        window.addEventListener('load', checkAuthStatus);
+
+        authBtn.onclick = () => {
+            log("Инициируем авторизацию...");
+            window.location.href = AUTH_URL;
+        };
+
+        selectBtn.onclick = () => fileInput.click();
 
         fileInput.onchange = (event) => {
             filesToUpload = Array.from(event.target.files);
@@ -189,15 +229,14 @@
             });
         };
 
-        document.getElementById("uploadBtn").onclick = async () => {
-            // Вначале проверяем, авторизован ли пользователь, сделав простой запрос к API
-            // const authCheckRes = await fetch(AUTH_URL, { method: 'HEAD' });
-            // if (authCheckRes.status === 401) {
-            //     log("Требуется авторизация. Перенаправляем...");
-            window.location.href = AUTH_URL;
-            //     return;
-            // }
+        uploadBtn.onclick = async () => {
+            // В этом сценарии мы уже проверили авторизацию, так что сразу начинаем загрузку.
+            if (filesToUpload.length === 0) {
+                log("Нет файлов для загрузки.");
+                return;
+            }
 
+            log("Начинаем загрузку...");
             for (let file of filesToUpload) {
                 try {
                     file._statusEl.className = "status uploading";
