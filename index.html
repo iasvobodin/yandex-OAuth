@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Загрузка на общий диск</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 15px;
+            margin: 0;
+            background: #fafafa;
+            color: #333;
+        }
+
+        h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        #controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 10px 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background: #4a90e2;
+            color: white;
+            font-size: 0.9rem;
+            flex: 1 1 auto;
+            max-width: 220px;
+        }
+
+        button:hover {
+            background: #357abd;
+        }
+
+        #preview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .thumb {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .thumb img {
+            width: 180px;
+            height: auto;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .file-info {
+            font-size: 0.85rem;
+            text-align: center;
+            margin-bottom: 6px;
+            word-break: break-word;
+        }
+
+        .progress-container {
+            width: 100%;
+            background: #eee;
+            border-radius: 6px;
+            overflow: hidden;
+            height: 8px;
+            margin-bottom: 6px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #4a90e2;
+            transition: width 0.2s ease;
+        }
+
+        .status {
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .status.waiting {
+            color: #888;
+        }
+
+        .status.uploading {
+            color: #e69500;
+        }
+
+        .status.success {
+            color: #2d9d2d;
+        }
+
+        .status.error {
+            color: #d93025;
+        }
+
+        #output {
+            background: #f4f4f4;
+            padding: 10px;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2 id="info">Вы загружаете фотографии на общий диск</h2>
+
+    <div id="controls">
+        <input type="file" id="fileInput" accept="image/*,video/*" multiple capture="environment"
+            style="display:none" />
+        <button id="selectBtn">Выбрать фотографии</button>
+        <button id="uploadBtn">Загрузить выбранные фото</button>
+    </div>
+
+    <div id="preview"></div>
+
+    <pre id="output"></pre>
+
+    <script>
+        const AUTH_URL = '/api/auth';
+        const UPLOAD_URL = '/api/upload';
+
+        let filesToUpload = [];
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const folderName = urlParams.get('folder') || 'Фото';
+        const subfolderName = urlParams.get('subfolder') || 'Новая папка';
+
+        document.getElementById("info").textContent = `Вы загружаете файлы в папку "${folderName}" под именем "${subfolderName}-***"`;
+
+        const output = document.getElementById("output");
+        function log(msg) { output.textContent += msg + "\n"; }
+
+        const fileInput = document.getElementById("fileInput");
+        document.getElementById("selectBtn").onclick = () => fileInput.click();
+
+        fileInput.onchange = (event) => {
+            filesToUpload = Array.from(event.target.files);
+            const previewDiv = document.getElementById("preview");
+            previewDiv.innerHTML = "";
+            filesToUpload.forEach(file => {
+                const div = document.createElement("div");
+                div.className = "thumb";
+                const img = document.createElement("img");
+                img.src = URL.createObjectURL(file);
+                const infoDiv = document.createElement("div");
+                infoDiv.className = "file-info";
+                infoDiv.textContent = file.name;
+                const progressContainer = document.createElement("div");
+                progressContainer.className = "progress-container";
+                const progressBar = document.createElement("div");
+                progressBar.className = "progress-bar";
+                progressContainer.appendChild(progressBar);
+                const statusDiv = document.createElement("div");
+                statusDiv.className = "status waiting";
+                statusDiv.textContent = "⏳ Ожидает";
+                div.appendChild(img);
+                div.appendChild(infoDiv);
+                div.appendChild(progressContainer);
+                div.appendChild(statusDiv);
+                previewDiv.appendChild(div);
+                file._statusEl = statusDiv;
+                file._progressEl = progressBar;
+            });
+        };
+
+        document.getElementById("uploadBtn").onclick = async () => {
+            // Вначале проверяем, авторизован ли пользователь, сделав простой запрос к API
+            const authCheckRes = await fetch(AUTH_URL, { method: 'HEAD' });
+            if (authCheckRes.status === 401) {
+                log("Требуется авторизация. Перенаправляем...");
+                window.location.href = AUTH_URL;
+                return;
+            }
+
+            for (let file of filesToUpload) {
+                try {
+                    file._statusEl.className = "status uploading";
+                    file._statusEl.textContent = "⬆ Загрузка...";
+                    file._progressEl.style.width = "0%";
+
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('folder', folderName);
+                    formData.append('subfolder', subfolderName);
+
+                    const uploadRes = await fetch(UPLOAD_URL, {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!uploadRes.ok) {
+                        const errorData = await uploadRes.json();
+                        throw new Error(errorData.error);
+                    }
+
+                    const successData = await uploadRes.json();
+                    log(successData.message);
+
+                    file._statusEl.className = "status success";
+                    file._statusEl.textContent = "✅ Загружено";
+                    file._progressEl.style.width = "100%";
+                } catch (err) {
+                    log(`Ошибка при загрузке "${file.name}": ${err.message}`);
+                    file._statusEl.className = "status error";
+                    file._statusEl.textContent = "❌ Ошибка";
+                    file._progressEl.style.background = "#d93025";
+                }
+            }
+
+            filesToUpload = [];
+            fileInput.value = "";
+        };
+    </script>
+</body>
+
+</html>
