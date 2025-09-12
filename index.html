@@ -49,7 +49,6 @@
             cursor: not-allowed;
         }
 
-        /* Добавили стиль для неактивной кнопки */
         #preview {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -153,10 +152,26 @@
         const UPLOAD_URL = '/api/upload';
 
         let filesToUpload = [];
+        let folderName = 'Фото';
+        let subfolderName = 'Новая папка';
 
+        // Сохраняем параметры в sessionStorage при первом заходе
         const urlParams = new URLSearchParams(window.location.search);
-        const folderName = urlParams.get('folder') || 'Фото';
-        const subfolderName = urlParams.get('subfolder') || 'Новая папка';
+        if (urlParams.has('folder') || urlParams.has('subfolder')) {
+            const data = {
+                folder: urlParams.get('folder'),
+                subfolder: urlParams.get('subfolder')
+            };
+            sessionStorage.setItem('uploadData', JSON.stringify(data));
+        }
+
+        // Получаем параметры из sessionStorage
+        const storedData = sessionStorage.getItem('uploadData');
+        if (storedData) {
+            const data = JSON.parse(storedData);
+            folderName = data.folder || folderName;
+            subfolderName = data.subfolder || subfolderName;
+        }
 
         document.getElementById("info").textContent = `Вы загружаете файлы в папку "${folderName}" под именем "${subfolderName}-***"`;
 
@@ -168,18 +183,17 @@
         const uploadBtn = document.getElementById("uploadBtn");
         const fileInput = document.getElementById("fileInput");
 
-        // Инициализация - проверяем статус авторизации
         async function checkAuthStatus() {
             try {
                 const res = await fetch(AUTH_URL, { method: 'HEAD' });
                 if (res.ok) {
                     log("✅ Авторизация успешна!");
-                    authBtn.style.display = 'none'; // Скрываем кнопку авторизации
+                    authBtn.style.display = 'none';
                     selectBtn.disabled = false;
                     uploadBtn.disabled = false;
                 } else {
                     log("⚠️ Требуется авторизация.");
-                    authBtn.style.display = 'block'; // Показываем кнопку авторизации
+                    authBtn.style.display = 'block';
                     selectBtn.disabled = true;
                     uploadBtn.disabled = true;
                 }
@@ -189,7 +203,6 @@
             }
         }
 
-        // Вызываем проверку при загрузке страницы
         window.addEventListener('load', checkAuthStatus);
 
         authBtn.onclick = () => {
@@ -230,7 +243,6 @@
         };
 
         uploadBtn.onclick = async () => {
-            // В этом сценарии мы уже проверили авторизацию, так что сразу начинаем загрузку.
             if (filesToUpload.length === 0) {
                 log("Нет файлов для загрузки.");
                 return;
