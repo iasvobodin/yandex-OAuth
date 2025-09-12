@@ -120,7 +120,7 @@ const checkQueues = async () => {
   try {
     const res = await fetch("/api/get-queues", { method: 'GET' });
     if (res.ok) {
-      log(`✅ Очереди получены${JSON.stringify(res.body)}`);
+      log(`✅ Очереди получены${JSON.stringify(res)}`);
     } else {
       log('⚠️ что то не так');
     }
