@@ -1,7 +1,6 @@
 // api/get-upload-url.js
 import fetch from 'node-fetch';
-import { getCookie } from '../utils/helpers.js'; // Используем ту же вспомогательную функцию
-
+import { getCookie, getRandomSuffix } from '../utils/helpers.js';
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method Not Allowed' });
@@ -57,24 +56,3 @@ export default async function handler(request, response) {
     }
 }
 
-function getRandomSuffix(length = 3) {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-}
-
-// Убедитесь, что эта вспомогательная функция доступна.
-// Если она в другом файле, импортируйте её.
-function getCookie(cookieHeader, name) {
-    const cookies = cookieHeader?.split(';') || [];
-    for (const cookie of cookies) {
-        const [cookieName, cookieValue] = cookie.trim().split('=');
-        if (cookieName === name) {
-            return decodeURIComponent(cookieValue);
-        }
-    }
-    return null;
-}

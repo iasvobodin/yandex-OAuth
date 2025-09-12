@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import formidable from 'formidable';
 import fs from 'fs';
 import path from 'path';
+import { getCookie, getRandomSuffix } from '../utils/helpers.js';
 
 export const config = {
     api: {
@@ -10,25 +11,7 @@ export const config = {
     },
 };
 
-function getCookie(cookieHeader, name) {
-    const cookies = cookieHeader?.split(';') || [];
-    for (const cookie of cookies) {
-        const [cookieName, cookieValue] = cookie.trim().split('=');
-        if (cookieName === name) {
-            return decodeURIComponent(cookieValue);
-        }
-    }
-    return null;
-}
 
-function getRandomSuffix(length = 3) {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-}
 
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
