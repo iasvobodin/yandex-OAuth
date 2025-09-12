@@ -15,7 +15,7 @@ export default async function handler(request, response) {
     const REDIRECT_URI = process.env.REDIRECT_URI;
     const SCOPE = "cloud_api:disk.read cloud_api:disk.write tracker:write tracker:read";
 
-    const authUrl = `https://oauth.yandex.ru/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPE)}`;
+    const authUrl = `https://oauth.yandex.ru/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`//&scope=${encodeURIComponent(SCOPE)}`;
 
     // Перенаправляем браузер пользователя на страницу авторизации Яндекса.
     response.redirect(authUrl);
