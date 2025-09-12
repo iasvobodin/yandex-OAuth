@@ -15,6 +15,9 @@
       <button id="authBtn" @click="handleAuth" :style="{ display: authBtnVisible ? 'block' : 'none' }">
         Авторизоваться
       </button>
+            <button id="QUEUES" @click="checkQueues" >
+        Проверка очередей в трекере
+      </button>
       <button id="selectBtn" :disabled="!isAuthorized" @click="selectFiles">Выбрать фотографии</button>
       <button id="uploadBtn" :disabled="!isAuthorized || filesToUpload.length === 0" @click="uploadFiles">
         Загрузить выбранные фото
@@ -109,6 +112,20 @@ const checkAuthStatus = async () => {
     log('❌ Произошла ошибка при проверке авторизации.');
     authBtnVisible.value = true;
     isAuthorized.value = false;
+  }
+};
+
+// проверка очереди в трекере
+const checkQueues = async () => {
+  try {
+    const res = await fetch("/api/get-queues", { method: 'GET' });
+    if (res.ok) {
+      log(`✅ Очереди получены${JSON.stringify(res.body)}`);
+    } else {
+      log('⚠️ что то не так');
+    }
+  } catch (err) {
+    log('❌ Произошла Ошибка работы с трекером');
   }
 };
 
