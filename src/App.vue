@@ -155,6 +155,7 @@ const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
   for (const file of files) {
+    log(`${file.type},${file.name}`)
     let thumbnail: string | null = null;
     if (file.type.startsWith('image/')) {
       thumbnail = URL.createObjectURL(file);
@@ -232,7 +233,7 @@ const uploadFiles = async (): Promise<void> => {
           subfolder: subfolderName,
         }),
       });
-
+ log(`${file.type},${file.name}`)
       if (!getUrlRes.ok) {
         const errorData = await getUrlRes.json();
         throw new Error(errorData.error);
