@@ -226,6 +226,7 @@ const uploadFiles = async (): Promise<void> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          fileType: file.type,
           fileName: file.name,
           folder: folderName,
           subfolder: subfolderName,

@@ -1,6 +1,6 @@
 // api/get-upload-url.js
 import fetch from 'node-fetch';
-import { getCookie, getRandomSuffix } from '../utils/helpers.js';
+import { getCookie, getRandomSuffix, getMimeTypeFromExtension } from '../utils/helpers.js';
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method Not Allowed' });
@@ -11,7 +11,7 @@ export default async function handler(request, response) {
         return response.status(401).json({ error: 'Unauthorized: Access token not found in cookies.' });
     }
 
-    const { fileName, folder, subfolder } = request.body;
+    const { fileName, folder, subfolder, fileType } = request.body;
     if (!fileName || !folder || !subfolder) {
         return response.status(400).json({ error: 'Missing file or folder information.' });
     }
@@ -34,6 +34,25 @@ export default async function handler(request, response) {
 
         // 2. Получаем ссылку для загрузки от Яндекса
         const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
+
+        if (!ext && fileType) {
+            const mimeToExt = {
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                png: 'image/png',
+                gif: 'image/gif',
+                webp: 'image/webp',
+                svg: 'image/svg+xml',
+                pdf: 'application/pdf',
+                txt: 'text/plain',
+                // Добавляем расширения HEIC и HEIF
+                heic: 'image/heic',
+                heif: 'image/heic'
+            };
+            ext = mimeToExt[file.type] || '';
+        }
+
+
         const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
 
         const uploadRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedBaseFolder}/${encodeURIComponent(newFileName)}&overwrite=true`, {
