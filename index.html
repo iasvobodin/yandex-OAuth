@@ -6,6 +6,7 @@
     <title>Загрузка на общий диск</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* Стили не изменились */
         body {
             font-family: Arial, sans-serif;
             padding: 15px;
@@ -149,13 +150,12 @@
 
     <script>
         const AUTH_URL = '/api/auth';
-        const UPLOAD_URL = '/api/upload';
+        const GET_UPLOAD_URL = '/api/get-upload-url'; // Новый эндпоинт
 
         let filesToUpload = [];
         let folderName = 'Фото';
         let subfolderName = 'Новая папка';
 
-        // Сохраняем параметры в sessionStorage при первом заходе
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('folder') || urlParams.has('subfolder')) {
             const data = {
@@ -165,7 +165,6 @@
             sessionStorage.setItem('uploadData', JSON.stringify(data));
         }
 
-        // Получаем параметры из sessionStorage
         const storedData = sessionStorage.getItem('uploadData');
         if (storedData) {
             const data = JSON.parse(storedData);
@@ -255,24 +254,48 @@
                     file._statusEl.textContent = "⬆ Загрузка...";
                     file._progressEl.style.width = "0%";
 
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    formData.append('folder', folderName);
-                    formData.append('subfolder', subfolderName);
-
-                    const uploadRes = await fetch(UPLOAD_URL, {
+                    // 1. Получаем подписанный URL от нашего сервера
+                    const getUrlRes = await fetch(GET_UPLOAD_URL, {
                         method: 'POST',
-                        body: formData,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            fileName: file.name,
+                            folder: folderName,
+                            subfolder: subfolderName
+                        })
                     });
 
-                    if (!uploadRes.ok) {
-                        const errorData = await uploadRes.json();
+                    if (!getUrlRes.ok) {
+                        const errorData = await getUrlRes.json();
                         throw new Error(errorData.error);
                     }
 
-                    const successData = await uploadRes.json();
-                    log(successData.message);
+                    const { uploadUrl, newFileName } = await getUrlRes.json();
 
+                    // 2. Используем XMLHttpRequest для отслеживания прогресса
+                    await new Promise((resolve, reject) => {
+                        const xhr = new XMLHttpRequest();
+                        xhr.open('PUT', uploadUrl, true);
+                        xhr.upload.onprogress = (e) => {
+                            if (e.lengthComputable) {
+                                const percent = Math.round((e.loaded / e.total) * 100);
+                                file._progressEl.style.width = percent + "%";
+                            }
+                        };
+                        xhr.onload = () => {
+                            if (xhr.status >= 200 && xhr.status < 300) {
+                                resolve();
+                            } else {
+                                reject(new Error(`Ошибка загрузки: ${xhr.status}`));
+                            }
+                        };
+                        xhr.onerror = () => reject(new Error('Сетевая ошибка'));
+                        xhr.send(file);
+                    });
+
+                    log(`Файл "${file.name}" сохранён как "${newFileName}" в "${folderName}".`);
                     file._statusEl.className = "status success";
                     file._statusEl.textContent = "✅ Загружено";
                     file._progressEl.style.width = "100%";
