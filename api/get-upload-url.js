@@ -61,6 +61,11 @@ export default async function handler(request, response) {
         });
 
         const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) {
+            const errorText = await res.text();
+            console.error('Yandex response:', res.status, errorText);
+            throw new Error("Failed to get upload URL");
+        }
         if (!uploadData.href) throw new Error("Failed to get upload URL");
 
         // Возвращаем клиенту подписанный URL и новое имя файла
