@@ -191,12 +191,12 @@
 
         document.getElementById("uploadBtn").onclick = async () => {
             // Вначале проверяем, авторизован ли пользователь, сделав простой запрос к API
-            const authCheckRes = await fetch(AUTH_URL, { method: 'HEAD' });
-            if (authCheckRes.status === 401) {
-                log("Требуется авторизация. Перенаправляем...");
-                window.location.href = AUTH_URL;
-                return;
-            }
+            // const authCheckRes = await fetch(AUTH_URL, { method: 'HEAD' });
+            // if (authCheckRes.status === 401) {
+            //     log("Требуется авторизация. Перенаправляем...");
+            window.location.href = AUTH_URL;
+            //     return;
+            // }
 
             for (let file of filesToUpload) {
                 try {
