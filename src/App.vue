@@ -155,11 +155,22 @@ const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
   for (const file of files) {
-    log(`${file.type},${file.name}`)
+    log(`${file.type}, ${file.name}`);
+
+    let uploadFile: File = file;
     let thumbnail: string | null = null;
+
     if (file.type.startsWith('image/')) {
-      thumbnail = URL.createObjectURL(file);
+      try {
+        // 🔹 конвертируем всё в JPEG
+        uploadFile = await convertImageToJpeg(file);
+        thumbnail = URL.createObjectURL(uploadFile);
+      } catch (e) {
+        log(`Ошибка конвертации "${file.name}", используем оригинал`);
+        thumbnail = URL.createObjectURL(file);
+      }
     } else if (file.type.startsWith('video/')) {
+      uploadFile = file; // видео не трогаем
       try {
         thumbnail = await createVideoThumbnail(file);
       } catch (e) {
@@ -168,8 +179,8 @@ const handleFileChange = async (event: Event) => {
     }
 
     filesToUpload.value.push({
-      file,
-      name: file.name,
+      file: uploadFile, // ⚡️ кладём уже конвертированный JPEG
+      name: uploadFile.name,
       progress: 0,
       statusClass: 'waiting',
       statusText: '⏳ Ожидает',
@@ -177,6 +188,7 @@ const handleFileChange = async (event: Event) => {
     });
   }
 };
+
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -205,6 +217,43 @@ const createVideoThumbnail = (file: File): Promise<string> => {
     video.src = URL.createObjectURL(file);
   });
 };
+
+const convertImageToJpeg = (file: File): Promise<File> => {
+  return new Promise<File>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Canvas context not available'));
+
+        ctx.drawImage(img, 0, 0);
+
+        canvas.toBlob(blob => {
+          if (!blob) return reject(new Error('Failed to convert image'));
+          const newFile = new File([blob], getFileNameWithoutExt(file.name) + '.jpg', {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          resolve(newFile);
+        }, 'image/jpeg', 0.9);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
+const getFileNameWithoutExt = (name: string): string => {
+  const dotIndex = name.lastIndexOf('.');
+  return dotIndex !== -1 ? name.substring(0, dotIndex) : name;
+};
+
 
 // Логика загрузки
 const uploadFiles = async (): Promise<void> => {
