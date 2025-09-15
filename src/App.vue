@@ -1,3 +1,5 @@
+
+
 <template>
   <div id="app-container">
     <h2 id="info">{{ infoText }}</h2>
@@ -6,8 +8,9 @@
       <input
         type="file"
         id="fileInput"
-        accept="image/*,image/heic,image/heif,video/*"
+        accept="image/*,video/*"
         multiple
+        capture="environment"
         style="display: none"
         ref="fileInputRef"
         @change="handleFileChange"
@@ -15,7 +18,7 @@
       <button id="authBtn" @click="handleAuth" :style="{ display: authBtnVisible ? 'block' : 'none' }">
         Авторизоваться
       </button>
-            <button id="QUEUES" @click="checkQueues" >
+      <button id="QUEUES" @click="checkQueues">
         Проверка очередей в трекере
       </button>
       <button id="selectBtn" :disabled="!isAuthorized" @click="selectFiles">Выбрать фотографии</button>
@@ -71,6 +74,7 @@ let subfolderName: string = 'Новая папка';
 // Логгирование
 const log = (msg: string) => {
   outputLog.value += msg + '\n';
+  console.log(msg); // Добавляем консольный лог для отладки
 };
 
 // Проверка статуса авторизации при загрузке страницы
@@ -114,27 +118,24 @@ const checkAuthStatus = async () => {
     isAuthorized.value = false;
   }
 };
+
 interface QueueItem {
   name: string;
-  // добавьте другие свойства, которые вам нужны, чтобы избежать ошибок в будущем
 }
+
 // проверка очереди в трекере
 const checkQueues = async () => {
   try {
     const res = await fetch("/api/get-queues", { method: 'GET' });
     if (res.ok) {
-      log(`✅ Очереди получены${JSON.stringify(res)}`);
+      const data: QueueItem[] = await res.json();
+      const names = data.map(item => item.name);
+      log(`✅ Очереди получены`);
+      log(JSON.stringify(names, null, 2));
     } else {
       log('⚠️ что то не так');
-      return
+      return;
     }
-     // Получаем данные в формате JSON
-        const data: QueueItem[] = await res.json();
-       const names = data.map(item => item.name); // Ошибка исчезнет, так как item теперь имеет тип QueueItem
-        // Теперь data содержит JSON-ответ, и его можно использовать
-        log(`✅ Очереди получены`);
-        log(JSON.stringify(names, null, 2)); // Выводим отформатированный JSON
-        
   } catch (err) {
     log('❌ Произошла Ошибка работы с трекером');
   }
@@ -151,100 +152,310 @@ const selectFiles = (): void => {
   }
 };
 
+
+
 const handleFileChange = async (event: Event) => {
-  filesToUpload.value = [];
-  const files = Array.from((event.target as HTMLInputElement).files || []);
-  for (const file of files) {
-    log(`${file.type}, ${file.name}`);
-
-    let uploadFile: File = file;
-    let thumbnail: string | null = null;
-
-    if (file.type.startsWith('image/')) {
-      try {
-        // 🔹 конвертируем всё в JPEG
-        uploadFile = await convertImageToJpeg(file);
-        thumbnail = URL.createObjectURL(uploadFile);
-      } catch (e) {
-        log(`Ошибка конвертации "${file.name}", используем оригинал`);
-        thumbnail = URL.createObjectURL(file);
-      }
-    } else if (file.type.startsWith('video/')) {
-      uploadFile = file; // видео не трогаем
-      try {
-        thumbnail = await createVideoThumbnail(file);
-      } catch (e) {
-        log(`Ошибка создания превью для видео "${file.name}"`);
-      }
-    }
-
-    filesToUpload.value.push({
-      file: uploadFile, // ⚡️ кладём уже конвертированный JPEG
-      name: uploadFile.name,
-      progress: 0,
-      statusClass: 'waiting',
-      statusText: '⏳ Ожидает',
-      thumbnail,
-    });
+  const target = event.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  
+  if (files.length === 0) {
+    log('Файлы не выбраны');
+    return;
   }
+
+  log(`Выбрано файлов: ${files.length}`);
+  filesToUpload.value = [];
+
+  for (const file of files) {
+    log(`Обработка файла: ${file.name}, тип: ${file.type}, размер: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+
+    try {
+      let uploadFile: File = file;
+      let thumbnail: string | null = null;
+
+      // Проверяем, является ли файл изображением
+      if (file.type.startsWith('image/') || isImageFile(file)) {
+        try {
+          // Специальная обработка для HEIC/HEIF на iOS
+          if (isHEICFile(file) || file.type === '') {
+            log(`Обнаружен HEIC/HEIF файл: ${file.name}`);
+            uploadFile = await processHEICFile(file);
+          } else {
+            // Конвертируем обычные изображения в JPEG
+            uploadFile = await convertImageToJpeg(file);
+          }
+          
+          // Создаем thumbnail для превью
+          thumbnail = await createImageThumbnail(uploadFile);
+          log(`✅ Изображение обработано: ${uploadFile.name}`);
+        } catch (e) {
+          log(`⚠️ Ошибка обработки изображения "${file.name}": ${e}. Используем оригинал.`);
+          uploadFile = file;
+          try {
+            thumbnail = await createImageThumbnail(file);
+          } catch (thumbError) {
+            log(`⚠️ Ошибка создания превью для "${file.name}"`);
+          }
+        }
+      } else if (file.type.startsWith('video/')) {
+        uploadFile = file; // видео не конвертируем
+        try {
+          thumbnail = await createVideoThumbnail(file);
+        } catch (e) {
+          log(`⚠️ Ошибка создания превью для видео "${file.name}"`);
+        }
+      } else {
+        log(`⚠️ Неизвестный тип файла: ${file.name}`);
+        uploadFile = file;
+      }
+
+      filesToUpload.value.push({
+        file: uploadFile,
+        name: uploadFile.name,
+        progress: 0,
+        statusClass: 'waiting',
+        statusText: '⏳ Ожидает',
+        thumbnail,
+      });
+    } catch (error) {
+      log(`❌ Критическая ошибка при обработке файла "${file.name}": ${error}`);
+    }
+  }
+
+  // Очищаем input для возможности повторного выбора тех же файлов
+  target.value = '';
 };
 
+// Определяем файл как изображение по расширению (для случаев когда MIME type пустой)
+const isImageFile = (file: File): boolean => {
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
+  const fileName = file.name.toLowerCase();
+  return imageExtensions.some(ext => fileName.endsWith(ext));
+};
+
+// Определяем HEIC файл
+const isHEICFile = (file: File): boolean => {
+  const fileName = file.name.toLowerCase();
+  return fileName.endsWith('.heic') || fileName.endsWith('.heif') || 
+         file.type === 'image/heic' || file.type === 'image/heif';
+};
+
+// Обработка HEIC файлов
+const processHEICFile = async (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    // Пытаемся прочитать HEIC как обычное изображение
+    // Современные браузеры на iOS могут поддерживать HEIC нативно
+    const img = new Image();
+    
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Не удалось получить контекст canvas');
+        }
+
+        ctx.drawImage(img, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            reject(new Error('Не удалось конвертировать HEIC'));
+            return;
+          }
+          
+          const newFileName = getFileNameWithoutExt(file.name) + '.jpg';
+          const convertedFile = new File([blob], newFileName, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          
+          resolve(convertedFile);
+        }, 'image/jpeg', 0.9);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    img.onerror = () => {
+      // Если не удалось загрузить как изображение, возвращаем оригинальный файл
+      log(`⚠️ Не удалось обработать HEIC файл "${file.name}", отправляем оригинал`);
+      resolve(file);
+    };
+    
+    // Создаем URL для изображения
+    try {
+      const url = URL.createObjectURL(file);
+      img.src = url;
+      
+      // Освобождаем URL через 30 секунд
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 30000);
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+// Создание превью для изображений
+const createImageThumbnail = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      const img = new Image();
+      
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const maxSize = 200; // максимальный размер превью
+          
+          let { width, height } = img;
+          
+          // Масштабируем изображение для превью
+          if (width > height) {
+            if (width > maxSize) {
+              height = (height * maxSize) / width;
+              width = maxSize;
+            }
+          } else {
+            if (height > maxSize) {
+              width = (width * maxSize) / height;
+              height = maxSize;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            throw new Error('Не удалось получить контекст canvas');
+          }
+          
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      img.onerror = () => reject(new Error('Ошибка загрузки изображения для превью'));
+      img.src = e.target?.result as string;
+    };
+    
+    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+    reader.readAsDataURL(file);
+  });
+};
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
-    video.onloadedmetadata = () => {
-      video.currentTime = 1;
+    video.muted = true; // Важно для автовоспроизведения на мобильных
+    
+    const cleanup = () => {
+      URL.revokeObjectURL(video.src);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('error', onError);
     };
-    video.onseeked = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
-      if (context) {
+    
+    const onLoadedMetadata = () => {
+      video.currentTime = Math.min(1, video.duration / 4); // Берем кадр из первой четверти
+    };
+    
+    const onSeeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const context = canvas.getContext('2d');
+        if (!context) {
+          throw new Error('Не удалось получить контекст canvas');
+        }
+        
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        URL.revokeObjectURL(video.src);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        
+        cleanup();
         resolve(dataUrl);
-      } else {
-        reject(new Error('Не удалось получить контекст canvas'));
+      } catch (error) {
+        cleanup();
+        reject(error);
       }
     };
-    video.onerror = () => {
-      reject(new Error('Ошибка создания превью видео.'));
+    
+    const onError = () => {
+      cleanup();
+      reject(new Error('Ошибка создания превью видео'));
     };
-    video.src = URL.createObjectURL(file);
+    
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('seeked', onSeeked);
+    video.addEventListener('error', onError);
+    
+    try {
+      video.src = URL.createObjectURL(file);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
   });
 };
 
 const convertImageToJpeg = (file: File): Promise<File> => {
   return new Promise<File>((resolve, reject) => {
     const reader = new FileReader();
+    
     reader.onload = e => {
       const img = new Image();
+      
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return reject(new Error('Canvas context not available'));
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            throw new Error('Canvas context недоступен');
+          }
 
-        ctx.drawImage(img, 0, 0);
+          // Устанавливаем белый фон для изображений с прозрачностью
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
 
-        canvas.toBlob(blob => {
-          if (!blob) return reject(new Error('Failed to convert image'));
-          const newFile = new File([blob], getFileNameWithoutExt(file.name) + '.jpg', {
-            type: 'image/jpeg',
-            lastModified: Date.now(),
-          });
-          resolve(newFile);
-        }, 'image/jpeg', 0.9);
+          canvas.toBlob(blob => {
+            if (!blob) {
+              reject(new Error('Не удалось конвертировать изображение'));
+              return;
+            }
+            
+            const newFileName = getFileNameWithoutExt(file.name) + '.jpg';
+            const newFile = new File([blob], newFileName, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            
+            resolve(newFile);
+          }, 'image/jpeg', 0.9);
+        } catch (error) {
+          reject(error);
+        }
       };
-      img.onerror = reject;
+      
+      img.onerror = () => reject(new Error('Ошибка загрузки изображения'));
       img.src = e.target?.result as string;
     };
-    reader.onerror = reject;
+    
+    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
     reader.readAsDataURL(file);
   });
 };
@@ -254,7 +465,6 @@ const getFileNameWithoutExt = (name: string): string => {
   return dotIndex !== -1 ? name.substring(0, dotIndex) : name;
 };
 
-
 // Логика загрузки
 const uploadFiles = async (): Promise<void> => {
   if (filesToUpload.value.length === 0) {
@@ -263,66 +473,85 @@ const uploadFiles = async (): Promise<void> => {
   }
 
   log('Начинаем загрузку...');
+  
   for (const fileItem of filesToUpload.value) {
     const file = fileItem.file;
+    
     try {
       fileItem.statusClass = 'uploading';
       fileItem.statusText = '⬆ Загрузка...';
       fileItem.progress = 0;
 
+      log(`Запрашиваем URL для загрузки: ${file.name} (${file.type})`);
+      
       const getUrlRes = await fetch(GET_UPLOAD_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          fileType: file.type,
+          fileType: file.type || 'application/octet-stream', // Fallback для пустого MIME type
           fileName: file.name,
           folder: folderName,
           subfolder: subfolderName,
         }),
       });
- log(`${file.type},${file.name}`)
+
       if (!getUrlRes.ok) {
-        const errorData = await getUrlRes.json();
-        throw new Error(errorData.error);
+        const errorData = await getUrlRes.json().catch(() => ({ error: `HTTP ${getUrlRes.status}` }));
+        throw new Error(errorData.error || `Ошибка сервера: ${getUrlRes.status}`);
       }
 
       const { uploadUrl, newFileName } = await getUrlRes.json() as { uploadUrl: string, newFileName: string };
+      log(`Получен URL для загрузки, новое имя файла: ${newFileName}`);
 
+      // Загружаем файл с отслеживанием прогресса
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('PUT', uploadUrl, true);
+        
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             fileItem.progress = Math.round((e.loaded / e.total) * 100);
           }
         };
+        
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve();
           } else {
-            reject(new Error(`Ошибка загрузки: ${xhr.status}`));
+            reject(new Error(`Ошибка загрузки: HTTP ${xhr.status}`));
           }
         };
-        xhr.onerror = () => reject(new Error('Сетевая ошибка'));
+        
+        xhr.onerror = () => reject(new Error('Сетевая ошибка при загрузке'));
+        xhr.ontimeout = () => reject(new Error('Тайм-аут загрузки'));
+        
+        xhr.open('PUT', uploadUrl, true);
+        xhr.timeout = 300000; // 5 минут тайм-аут
+        
+        // Устанавливаем правильный Content-Type
+        if (file.type) {
+          xhr.setRequestHeader('Content-Type', file.type);
+        }
+        
         xhr.send(file);
       });
 
-      log(`Файл "${file.name}" сохранён как "${newFileName}" в "${folderName}".`);
+      log(`✅ Файл "${file.name}" успешно загружен как "${newFileName}"`);
       fileItem.statusClass = 'success';
       fileItem.statusText = '✅ Загружено';
       fileItem.progress = 100;
+      
     } catch (err: any) {
-      log(`Ошибка при загрузке "${file.name}": ${err.message}`);
+      const errorMessage = err?.message || 'Неизвестная ошибка';
+      log(`❌ Ошибка при загрузке "${file.name}": ${errorMessage}`);
       fileItem.statusClass = 'error';
       fileItem.statusText = '❌ Ошибка';
-      fileItem.progress = 100;
+      fileItem.progress = 0;
     }
   }
-  if (fileInputRef.value) {
-    fileInputRef.value.value = '';
-  }
+
+  log('Загрузка завершена');
 };
 </script>
 
