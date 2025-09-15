@@ -6,7 +6,7 @@
       <input
         type="file"
         id="fileInput"
-        accept="image/*,video/*"
+        accept="image/*,image/heic,image/heif,video/*"
         multiple
         style="display: none"
         ref="fileInputRef"
