@@ -12,26 +12,21 @@ export default async function handler(req, res) {
         const { issueKey } = req.body;
         console.log("Received issueKey:", issueKey);
 
-        if (!issueKey) {
-            console.error("No issueKey in body");
-            return res.status(400).json({ error: "No issueKey provided" });
-        }
+        if (!issueKey) return res.status(400).json({ error: "No issueKey provided" });
 
-        const token = process.env.YANDEX_TRACKER_TOKEN;
+        const trackerToken = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
+        const diskToken = process.env.YANDEX_DISK_TOKEN; // OAuth для Диска
+        const folderName = issueKey; // название папки на Диске
 
-        console.log("Using OrgId:", orgId);
-
-        const headers = {
-            "Authorization": `OAuth ${token}`,
+        const trackerHeaders = {
+            "Authorization": `OAuth ${trackerToken}`,
             "X-Org-Id": orgId,
             "Content-Type": "application/json"
         };
 
-        // === 1. Получаем данные задачи ===
-        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers });
-        console.log("Issue API status:", issueResp.status);
-
+        // 1️⃣ Получаем данные задачи
+        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers: trackerHeaders });
         if (!issueResp.ok) {
             const text = await issueResp.text();
             console.error("Tracker issue error:", text);
@@ -40,49 +35,84 @@ export default async function handler(req, res) {
         const issue = await issueResp.json();
         console.log("Issue summary:", issue.summary);
 
-        // === 2. Получаем список вложений ===
-        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers });
-        console.log("Attachments API status:", attachResp.status);
-
-        let attachments = [];
-        if (attachResp.ok) {
-            const data = await attachResp.json();
-            attachments = Array.isArray(data) ? data : [];
-        } else {
-            console.warn("No attachments or error:", await attachResp.text());
-        }
+        // 2️⃣ Получаем список вложений
+        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers: trackerHeaders });
+        const attachments = attachResp.ok ? (await attachResp.json()) : [];
         console.log("Found attachments:", attachments.length);
 
-        // === 3. Скачиваем вложения в base64 ===
-        const files = [];
+        // 3️⃣ Создаём папку на Яндекс.Диске
+        const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folderName}`;
+        const encodedBaseFolder = encodeURIComponent(baseFolder);
+
+        const checkFolderRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
+            method: "GET",
+            headers: { Authorization: `OAuth ${diskToken}` }
+        });
+
+        if (checkFolderRes.status === 404) {
+            console.log("Creating folder on Yandex.Disk:", baseFolder);
+            await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
+                method: "PUT",
+                headers: { Authorization: `OAuth ${diskToken}` }
+            });
+        }
+
+        // 4️⃣ Загружаем файлы на Диск и получаем публичные ссылки
+        const links = [];
+
         for (const att of attachments) {
             try {
                 console.log(`Fetching attachment: ${att.name} (${att.id})`);
-                const fileResp = await fetch(
-                    `https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`,
-                    { headers: { ...headers, Accept: "application/octet-stream" } }
-                );
+                const fileResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`, {
+                    headers: { ...trackerHeaders, Accept: "application/octet-stream" }
+                });
 
-                if (fileResp.ok) {
-                    const arrayBuffer = await fileResp.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-                    files.push({
-                        filename: att.name,
-                        content: buffer.toString("base64"),
-                        encoding: "base64",
-                        contentType: att.contentType || "application/octet-stream"
-                    });
-                    console.log(`Attachment ${att.name} added (${buffer.length} bytes)`);
-                } else {
+                if (!fileResp.ok) {
                     console.warn(`Failed to fetch attachment ${att.id}:`, await fileResp.text());
+                    continue;
                 }
+
+                const buffer = Buffer.from(await fileResp.arrayBuffer());
+
+                const filePath = `${baseFolder}/${att.name}`;
+                const encodedFilePath = encodeURIComponent(filePath);
+
+                // Получаем upload_url
+                const uploadUrlRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedFilePath}&overwrite=true`, {
+                    method: "GET",
+                    headers: { Authorization: `OAuth ${diskToken}` }
+                });
+                const uploadData = await uploadUrlRes.json();
+                const uploadUrl = uploadData.href;
+
+                // Загружаем файл
+                await fetch(uploadUrl, { method: "PUT", body: buffer });
+                console.log(`Uploaded ${att.name} to Yandex.Disk`);
+
+                // Публикуем и получаем публичную ссылку
+                await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${encodedFilePath}`, {
+                    method: "PUT",
+                    headers: { Authorization: `OAuth ${diskToken}` }
+                });
+
+                const infoRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedFilePath}`, {
+                    headers: { Authorization: `OAuth ${diskToken}` }
+                });
+                const info = await infoRes.json();
+                if (info.public_url) links.push({ name: att.name, url: info.public_url });
             } catch (err) {
-                console.error("Attachment fetch error:", err);
+                console.error("Attachment upload error:", err);
             }
         }
 
-        // === 4. Отправляем письмо ===
-        console.log("Preparing email...");
+        console.log("Public links:", links);
+
+        // 5️⃣ Формируем письмо
+        let bodyText = issue.description || "Нет описания";
+        if (links.length > 0) {
+            bodyText += "\n\nФайлы по задаче:\n" + links.map(l => `- ${l.name}: ${l.url}`).join("\n");
+        }
+
         const transporter = nodemailer.createTransport({
             host: "smtp.yandex.ru",
             port: 465,
@@ -95,19 +125,19 @@ export default async function handler(req, res) {
 
         const mailOptions = {
             from: `"QC TAU" <${process.env.MAIL_USER}>`,
-            to: "iasvobodin@gmail.com", // TODO: заменить на реальный адрес поставщика
-            subject: `Re: ${issue.key}: ${issue.summary}`, // важно для автокомментариев
-            text: issue.description || "Нет описания",
-            attachments: files
+            to: process.env.MAIL_TO,
+            subject: `Re: ${issue.key}: ${issue.summary}`,
+            text: bodyText
         };
 
         console.log("Sending email to:", mailOptions.to);
         const info = await transporter.sendMail(mailOptions);
-        console.log("Email sent:", info.messageId, info.response);
+        console.log("Email sent:", info.messageId);
 
-        res.status(200).json({ success: true, sentFiles: files.length });
+        res.status(200).json({ success: true, filesUploaded: links.length, emailId: info.messageId });
+
     } catch (err) {
         console.error("Webhook handler error:", err);
-        res.status(500).json({ error: "Internal server error", details: err.message });
+        res.status(500).json({ error: err.message });
     }
 }
