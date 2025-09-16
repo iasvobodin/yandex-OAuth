@@ -55,13 +55,10 @@ export default async function handler(req, res) {
                 method: "PUT",
                 headers: { Authorization: `OAuth ${diskToken}` }
             });
-            // Опциональная небольшая задержка, чтобы папка успела создаться
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 500)); // небольшая пауза
         }
 
-        // 4️⃣ Загружаем файлы на Диск и получаем публичные ссылки
-        const links = [];
-
+        // 4️⃣ Загружаем все вложения в папку
         for (const att of attachments) {
             try {
                 console.log(`Fetching attachment: ${att.name} (${att.id})`);
@@ -76,7 +73,6 @@ export default async function handler(req, res) {
                 }
 
                 const buffer = Buffer.from(await fileResp.arrayBuffer());
-
                 const safeFileName = encodeURIComponent(att.name);
                 const filePath = `${encodedBaseFolder}/${safeFileName}`;
 
@@ -85,43 +81,40 @@ export default async function handler(req, res) {
                     method: "GET",
                     headers: { Authorization: `OAuth ${diskToken}` }
                 });
-
                 const uploadData = await uploadUrlRes.json();
                 if (!uploadUrlRes.ok || !uploadData.href) {
                     console.error("Failed to get upload URL for file:", att.name, uploadData);
                     continue;
                 }
 
-                const uploadUrl = uploadData.href;
-
-                // Загружаем файл
-                await fetch(uploadUrl, { method: "PUT", body: buffer });
+                await fetch(uploadData.href, { method: "PUT", body: buffer });
                 console.log(`Uploaded ${att.name} to Yandex.Disk`);
-
-                // Публикуем и получаем публичную ссылку
-                await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${filePath}`, {
-                    method: "PUT",
-                    headers: { Authorization: `OAuth ${diskToken}` }
-                });
-
-                const infoRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${filePath}`, {
-                    headers: { Authorization: `OAuth ${diskToken}` }
-                });
-                const info = await infoRes.json();
-                if (info.public_url) links.push({ name: att.name, url: info.public_url });
 
             } catch (err) {
                 console.error("Attachment upload error:", err);
             }
         }
 
-        console.log("Public links:", links);
+        // 5️⃣ Создаём публичную ссылку на всю папку
+        const publishRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${encodedBaseFolder}`, {
+            method: "PUT",
+            headers: { Authorization: `OAuth ${diskToken}` }
+        });
 
-        // 5️⃣ Формируем письмо
-        let bodyText = issue.description || "Нет описания";
-        if (links.length > 0) {
-            bodyText += "\n\nФайлы по задаче:\n" + links.map(l => `- ${l.name}: ${l.url}`).join("\n");
+        if (!publishRes.ok) {
+            console.warn("Failed to publish folder:", await publishRes.text());
         }
+
+        const infoRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
+            headers: { Authorization: `OAuth ${diskToken}` }
+        });
+        const info = await infoRes.json();
+        const folderUrl = info.public_url;
+        console.log("Folder public URL:", folderUrl);
+
+        // 6️⃣ Формируем письмо
+        let bodyText = issue.description || "Нет описания";
+        if (folderUrl) bodyText += `\n\nВсе файлы по задаче доступны здесь:\n${folderUrl}`;
 
         const transporter = nodemailer.createTransport({
             host: "smtp.yandex.ru",
@@ -141,10 +134,10 @@ export default async function handler(req, res) {
         };
 
         console.log("Sending email to:", mailOptions.to);
-        const info = await transporter.sendMail(mailOptions);
-        console.log("Email sent:", info.messageId);
+        const infoMail = await transporter.sendMail(mailOptions);
+        console.log("Email sent:", infoMail.messageId);
 
-        res.status(200).json({ success: true, filesUploaded: links.length, emailId: info.messageId });
+        res.status(200).json({ success: true, folderUrl, emailId: infoMail.messageId });
 
     } catch (err) {
         console.error("Webhook handler error:", err);
