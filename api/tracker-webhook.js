@@ -2,12 +2,13 @@ import nodemailer from "nodemailer";
 
 export default async function handler(req, res) {
     console.log("=== Tracker Webhook Triggered ===");
-    try {
-        if (req.method !== "POST") {
-            console.warn("Invalid method:", req.method);
-            return res.status(405).json({ error: "Method not allowed" });
-        }
 
+    if (req.method !== "POST") {
+        console.warn("Invalid method:", req.method);
+        return res.status(405).json({ error: "Method not allowed" });
+    }
+
+    try {
         const { issueKey } = req.body;
         console.log("Received issueKey:", issueKey);
 
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
             "Content-Type": "application/json"
         };
 
-        // === 1. Основная информация о задаче ===
+        // === 1. Получаем данные задачи ===
         const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers });
         console.log("Issue API status:", issueResp.status);
 
@@ -39,7 +40,7 @@ export default async function handler(req, res) {
         const issue = await issueResp.json();
         console.log("Issue summary:", issue.summary);
 
-        // === 2. Вложения ===
+        // === 2. Получаем список вложений ===
         const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers });
         console.log("Attachments API status:", attachResp.status);
 
@@ -48,11 +49,11 @@ export default async function handler(req, res) {
             const data = await attachResp.json();
             attachments = Array.isArray(data) ? data : [];
         } else {
-            console.warn("No attachments, response:", await attachResp.text());
+            console.warn("No attachments or error:", await attachResp.text());
         }
         console.log("Found attachments:", attachments.length);
 
-        // === 3. Скачиваем вложения ===
+        // === 3. Скачиваем вложения в base64 ===
         const files = [];
         for (const att of attachments) {
             try {
@@ -61,11 +62,15 @@ export default async function handler(req, res) {
                     `https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`,
                     { headers: { ...headers, Accept: "application/octet-stream" } }
                 );
+
                 if (fileResp.ok) {
-                    const buffer = Buffer.from(await fileResp.arrayBuffer());
+                    const arrayBuffer = await fileResp.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
                     files.push({
                         filename: att.name,
-                        content: buffer
+                        content: buffer.toString("base64"),
+                        encoding: "base64",
+                        contentType: att.contentType || "application/octet-stream"
                     });
                     console.log(`Attachment ${att.name} added (${buffer.length} bytes)`);
                 } else {
@@ -75,7 +80,6 @@ export default async function handler(req, res) {
                 console.error("Attachment fetch error:", err);
             }
         }
-
 
         // === 4. Отправляем письмо ===
         console.log("Preparing email...");
@@ -91,15 +95,15 @@ export default async function handler(req, res) {
 
         const mailOptions = {
             from: `"QC TAU" <${process.env.MAIL_USER}>`,
-            to: "iasvobodin@gmail.com", // TODO: заменить на реальный адрес
-            subject: `Re: ${issue.key}: ${issue.summary}`, // важно для комментариев
+            to: "iasvobodin@gmail.com", // TODO: заменить на реальный адрес поставщика
+            subject: `Re: ${issue.key}: ${issue.summary}`, // важно для автокомментариев
             text: issue.description || "Нет описания",
             attachments: files
         };
 
         console.log("Sending email to:", mailOptions.to);
         const info = await transporter.sendMail(mailOptions);
-        console.log("Email sent:", info.messageId);
+        console.log("Email sent:", info.messageId, info.response);
 
         res.status(200).json({ success: true, sentFiles: files.length });
     } catch (err) {
