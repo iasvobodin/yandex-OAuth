@@ -2,14 +2,16 @@ import nodemailer from "nodemailer";
 
 export default async function handler(req, res) {
     try {
-        const { issueKey } = req.body;
+        if (req.method !== "POST") {
+            return res.status(405).json({ error: "Method not allowed" });
+        }
 
+        const { issueKey } = req.body;
         if (!issueKey) {
             return res.status(400).json({ error: "No issueKey provided" });
         }
 
-        // 1. Получаем данные задачи через API Яндекс.Трекера
-        const token = process.env.YANDEX_TRACKER_TOKEN; // положить в Vercel Environment Variables
+        const token = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
 
         const headers = {
@@ -18,32 +20,49 @@ export default async function handler(req, res) {
             "Content-Type": "application/json"
         };
 
-        // Основная информация о задаче
-        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, {
-            headers
-        });
+        // === 1. Основная информация о задаче ===
+        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers });
+        if (!issueResp.ok) {
+            const text = await issueResp.text();
+            console.error("Tracker issue error:", text);
+            return res.status(issueResp.status).json({ error: "Failed to fetch issue", details: text });
+        }
         const issue = await issueResp.json();
 
-        // Вложения
-        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, {
-            headers
-        });
-        const attachments = await attachResp.json();
-
-        // 2. Скачиваем вложения (если нужно именно вложить в письмо)
-        const files = [];
-        for (const att of attachments) {
-            const fileResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`, {
-                headers
-            });
-            const buffer = Buffer.from(await fileResp.arrayBuffer());
-            files.push({
-                filename: att.name,
-                content: buffer
-            });
+        // === 2. Вложения ===
+        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers });
+        let attachments = [];
+        if (attachResp.ok) {
+            const data = await attachResp.json();
+            attachments = Array.isArray(data) ? data : [];
+        } else {
+            const text = await attachResp.text();
+            console.warn("No attachments or error:", text);
         }
 
-        // 3. Формируем письмо
+        // === 3. Скачиваем вложения (если есть) ===
+        const files = [];
+        for (const att of attachments) {
+            try {
+                const fileResp = await fetch(
+                    `https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`,
+                    { headers }
+                );
+                if (fileResp.ok) {
+                    const buffer = Buffer.from(await fileResp.arrayBuffer());
+                    files.push({
+                        filename: att.name,
+                        content: buffer
+                    });
+                } else {
+                    console.warn(`Failed to fetch attachment ${att.id}:`, await fileResp.text());
+                }
+            } catch (err) {
+                console.error("Attachment fetch error:", err);
+            }
+        }
+
+        // === 4. Отправляем письмо ===
         const transporter = nodemailer.createTransport({
             host: "smtp.yandex.ru",
             port: 465,
@@ -56,15 +75,15 @@ export default async function handler(req, res) {
 
         await transporter.sendMail({
             from: `"QA Bot" <${process.env.MAIL_USER}>`,
-            to: "iasvobodin@gmail.com", // можно хранить в кастомном поле задачи и подставлять сюда
+            to: "supplier@example.com", // можно подставлять из кастомного поля
             subject: `Брак: ${issue.summary} (${issue.key})`,
-            text: issue.description,
-            attachments: files // прикладываем файлы
+            text: issue.description || "Нет описания",
+            attachments: files
         });
 
-        res.status(200).json({ success: true });
+        res.status(200).json({ success: true, sentFiles: files.length });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Internal server error" });
+        console.error("Webhook handler error:", err);
+        res.status(500).json({ error: "Internal server error", details: err.message });
     }
 }
