@@ -86,7 +86,7 @@ export default async function handler(req, res) {
 
         const mailOptions = {
             from: `"QA Bot" <${process.env.MAIL_USER}>`,
-            to: "supplier@example.com", // TODO: заменить на реальный адрес
+            to: "iasvobodin@gmail.com", // TODO: заменить на реальный адрес
             subject: `Брак: ${issue.summary} (${issue.key})`,
             text: issue.description || "Нет описания",
             attachments: files
