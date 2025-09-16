@@ -63,9 +63,10 @@ export default async function handler(req, res) {
         for (const att of attachments) {
             try {
                 console.log(`Fetching attachment: ${att.name} (${att.id})`);
-                const fileResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`, {
-                    headers: { ...trackerHeaders, Accept: "application/octet-stream" }
-                });
+                const fileResp = await fetch(
+                    `https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}/content`,
+                    { headers: { ...trackerHeaders, Accept: "application/octet-stream" } }
+                );
 
                 if (!fileResp.ok) {
                     console.warn(`Failed to fetch attachment ${att.id}:`, await fileResp.text());
