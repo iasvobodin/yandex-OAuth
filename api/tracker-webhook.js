@@ -16,7 +16,7 @@ export default async function handler(req, res) {
 
         const trackerToken = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
-        const diskToken = process.env.YANDEX_DISK_TOKEN; // OAuth для Диска
+        const diskToken = process.env.YANDEX_TRACKER_TOKEN; // OAuth для Диска
         const folderName = issueKey; // название папки на Диске
 
         const trackerHeaders = {
