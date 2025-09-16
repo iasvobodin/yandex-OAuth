@@ -59,11 +59,15 @@ export default async function handler(req, res) {
                 console.log(`Fetching attachment: ${att.name} (${att.id})`);
                 const fileResp = await fetch(
                     `https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}`,
-                    { headers }
+                    { headers: { ...headers, Accept: "application/octet-stream" } }
                 );
                 if (fileResp.ok) {
                     const buffer = Buffer.from(await fileResp.arrayBuffer());
-                    files.push({ filename: att.name, content: buffer });
+                    files.push({
+                        filename: att.name,
+                        content: buffer
+                    });
+                    console.log(`Attachment ${att.name} added (${buffer.length} bytes)`);
                 } else {
                     console.warn(`Failed to fetch attachment ${att.id}:`, await fileResp.text());
                 }
@@ -71,6 +75,7 @@ export default async function handler(req, res) {
                 console.error("Attachment fetch error:", err);
             }
         }
+
 
         // === 4. Отправляем письмо ===
         console.log("Preparing email...");
@@ -85,9 +90,9 @@ export default async function handler(req, res) {
         });
 
         const mailOptions = {
-            from: `"QA Bot" <${process.env.MAIL_USER}>`,
+            from: `"QC TAU" <${process.env.MAIL_USER}>`,
             to: "iasvobodin@gmail.com", // TODO: заменить на реальный адрес
-            subject: `Брак: ${issue.summary} (${issue.key})`,
+            subject: `Re: ${issue.key}: ${issue.summary}`, // важно для комментариев
             text: issue.description || "Нет описания",
             attachments: files
         };
