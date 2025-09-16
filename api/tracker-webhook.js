@@ -55,6 +55,8 @@ export default async function handler(req, res) {
                 method: "PUT",
                 headers: { Authorization: `OAuth ${diskToken}` }
             });
+            // Опциональная небольшая задержка, чтобы папка успела создаться
+            await new Promise(r => setTimeout(r, 500));
         }
 
         // 4️⃣ Загружаем файлы на Диск и получаем публичные ссылки
@@ -75,15 +77,21 @@ export default async function handler(req, res) {
 
                 const buffer = Buffer.from(await fileResp.arrayBuffer());
 
-                const filePath = `${baseFolder}/${att.name}`;
-                const encodedFilePath = encodeURIComponent(filePath);
+                const safeFileName = encodeURIComponent(att.name);
+                const filePath = `${encodedBaseFolder}/${safeFileName}`;
 
                 // Получаем upload_url
-                const uploadUrlRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedFilePath}&overwrite=true`, {
+                const uploadUrlRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${filePath}&overwrite=true`, {
                     method: "GET",
                     headers: { Authorization: `OAuth ${diskToken}` }
                 });
+
                 const uploadData = await uploadUrlRes.json();
+                if (!uploadUrlRes.ok || !uploadData.href) {
+                    console.error("Failed to get upload URL for file:", att.name, uploadData);
+                    continue;
+                }
+
                 const uploadUrl = uploadData.href;
 
                 // Загружаем файл
@@ -91,16 +99,17 @@ export default async function handler(req, res) {
                 console.log(`Uploaded ${att.name} to Yandex.Disk`);
 
                 // Публикуем и получаем публичную ссылку
-                await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${encodedFilePath}`, {
+                await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${filePath}`, {
                     method: "PUT",
                     headers: { Authorization: `OAuth ${diskToken}` }
                 });
 
-                const infoRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedFilePath}`, {
+                const infoRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${filePath}`, {
                     headers: { Authorization: `OAuth ${diskToken}` }
                 });
                 const info = await infoRes.json();
                 if (info.public_url) links.push({ name: att.name, url: info.public_url });
+
             } catch (err) {
                 console.error("Attachment upload error:", err);
             }
