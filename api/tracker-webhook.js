@@ -125,7 +125,7 @@ export default async function handler(req, res) {
 
         const mailOptions = {
             from: `"QC TAU" <${process.env.MAIL_USER}>`,
-            to: process.env.MAIL_TO,
+            to: "iasvobodin@gmail.com",
             subject: `Re: ${issue.key}: ${issue.summary}`,
             text: bodyText
         };
