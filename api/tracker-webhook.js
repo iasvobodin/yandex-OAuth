@@ -13,6 +13,7 @@ export default async function handler(req, res) {
         console.log("Received issueKey:", issueKey);
         const trigger = req.headers["x-tracker-trigger"];
         console.log("Trigger:", trigger);
+        console.log("Body:", req.body);         // тут JSON от Трекера
         const trackerToken = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
         const diskToken = process.env.YANDEX_TRACKER_TOKEN;
