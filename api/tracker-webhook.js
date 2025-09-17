@@ -62,7 +62,7 @@ export default async function handler(req, res) {
             getCustomFieldValue(issue, "supplier_email") ||
             "iasvobodin@gmail.com";
 
-        console.log("Supplier email:", supplierEmail, issue.customFields);
+        console.log("Supplier email:", supplierEmail, issue);
 
         // const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
         console.log("Supplier email:", supplierEmail);
