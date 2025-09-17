@@ -51,7 +51,20 @@ export default async function handler(req, res) {
         console.log("Issue summary:", issue.summary);
 
         // 4️⃣ Email поставщика
-        const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
+
+
+        function getCustomFieldValue(issue, fieldId) {
+            const field = issue.customFields?.find(f => f.id === fieldId || f.name === fieldId);
+            return field?.value || null;
+        }
+
+        const supplierEmail =
+            getCustomFieldValue(issue, "supplier_email") ||
+            "iasvobodin@gmail.com";
+
+        console.log("Supplier email:", supplierEmail, issue.customFields);
+
+        // const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
         console.log("Supplier email:", supplierEmail);
 
         // 5️⃣ Получаем вложения
