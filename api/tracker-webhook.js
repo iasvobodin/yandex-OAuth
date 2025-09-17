@@ -11,7 +11,8 @@ export default async function handler(req, res) {
         const { issueKey } = req.body;
         if (!issueKey) return res.status(400).json({ error: "No issueKey provided" });
         console.log("Received issueKey:", issueKey);
-
+        const trigger = req.headers["x-tracker-trigger"];
+        console.log("Trigger:", trigger);
         const trackerToken = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
         const diskToken = process.env.YANDEX_TRACKER_TOKEN;
