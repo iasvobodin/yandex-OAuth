@@ -53,16 +53,12 @@ export default async function handler(req, res) {
         // 4️⃣ Email поставщика
 
 
-        function getCustomFieldValue(issue, fieldId) {
-            const field = issue.customFields?.find(f => f.id === fieldId || f.name === fieldId);
-            return field?.value || null;
-        }
+        // Найти ключ, который оканчивается на '--supplierEmail'
+        const emailKey = Object.keys(issue).find(k => k.endsWith('supplierEmail'));
+        const supplierEmail = emailKey ? issue[emailKey] : 'iasvobodin@gmail.com';
+        console.log("Supplier email:", supplierEmail);
 
-        const supplierEmail =
-            getCustomFieldValue(issue, "supplier_email") ||
-            "iasvobodin@gmail.com";
 
-        console.log("Supplier email:", supplierEmail, issue);
 
         // const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
         console.log("Supplier email:", supplierEmail);
