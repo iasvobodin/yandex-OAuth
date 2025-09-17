@@ -11,10 +11,7 @@ export default async function handler(req, res) {
         const { issueKey } = req.body;
         if (!issueKey) return res.status(400).json({ error: "No issueKey provided" });
         console.log("Received issueKey:", issueKey);
-        const trigger = req.headers["x-tracker-trigger"];
-        console.log("Trigger:", trigger);
-        console.log("Body:", req.body);
-        console.log("Headers:", req.headers);
+
         const trackerToken = process.env.YANDEX_TRACKER_TOKEN;
         const orgId = process.env.YANDEX_ORG_ID;
         const diskToken = process.env.YANDEX_TRACKER_TOKEN;
@@ -25,23 +22,7 @@ export default async function handler(req, res) {
             "Content-Type": "application/json"
         };
 
-        // 1️⃣ Получаем данные задачи
-        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers: trackerHeaders });
-        if (!issueResp.ok) throw new Error(await issueResp.text());
-        const issue = await issueResp.json();
-        console.log("Issue summary:", issue.summary);
-
-        // 2️⃣ Получаем email поставщика из локального поля
-        // Название поля берём как "supplier_email", если оно пустое — fallback
-        const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
-        console.log("Supplier email:", supplierEmail);
-
-        // 3️⃣ Получаем вложения
-        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers: trackerHeaders });
-        const attachments = attachResp.ok ? (await attachResp.json()) : [];
-        console.log("Found attachments:", attachments.length);
-
-        // 4️⃣ Создаём папку на Диске
+        // 1️⃣ Проверяем папку на Диске
         const folderName = issueKey;
         const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folderName}`;
         const encodedBaseFolder = encodeURIComponent(baseFolder);
@@ -51,15 +32,34 @@ export default async function handler(req, res) {
             headers: { Authorization: `OAuth ${diskToken}` }
         });
 
-        if (checkFolderRes.status === 404) {
-            await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
-                method: "PUT",
-                headers: { Authorization: `OAuth ${diskToken}` }
-            });
-            await new Promise(r => setTimeout(r, 500));
+        if (checkFolderRes.ok) {
+            console.log("⚠️ Папка уже существует, значит обработка уже была. Прерываем.");
+            return res.status(200).json({ skipped: true, reason: "Folder already exists" });
         }
 
-        // 5️⃣ Загружаем файлы на Диск
+        // 2️⃣ Создаём папку
+        await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
+            method: "PUT",
+            headers: { Authorization: `OAuth ${diskToken}` }
+        });
+        console.log("Папка создана:", baseFolder);
+
+        // 3️⃣ Получаем данные задачи
+        const issueResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}`, { headers: trackerHeaders });
+        if (!issueResp.ok) throw new Error(await issueResp.text());
+        const issue = await issueResp.json();
+        console.log("Issue summary:", issue.summary);
+
+        // 4️⃣ Email поставщика
+        const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
+        console.log("Supplier email:", supplierEmail);
+
+        // 5️⃣ Получаем вложения
+        const attachResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments`, { headers: trackerHeaders });
+        const attachments = attachResp.ok ? (await attachResp.json()) : [];
+        console.log("Found attachments:", attachments.length);
+
+        // 6️⃣ Загружаем файлы на Диск
         for (const att of attachments) {
             try {
                 const fileResp = await fetch(`https://api.tracker.yandex.net/v2/issues/${issueKey}/attachments/${att.id}/content`, {
@@ -85,7 +85,7 @@ export default async function handler(req, res) {
             }
         }
 
-        // 6️⃣ Публикуем папку и получаем публичный URL
+        // 7️⃣ Публикуем папку
         await fetch(`https://cloud-api.yandex.net/v1/disk/resources/publish?path=${encodedBaseFolder}`, {
             method: "PUT",
             headers: { Authorization: `OAuth ${diskToken}` }
@@ -97,7 +97,7 @@ export default async function handler(req, res) {
         const folderUrl = (await infoRes.json()).public_url;
         console.log("Folder public URL:", folderUrl);
 
-        // 7️⃣ Отправка письма
+        // 8️⃣ Отправка письма
         let bodyText = issue.description || "Нет описания";
         if (folderUrl) bodyText += `\n\nВсе файлы по задаче доступны здесь:\n${folderUrl}`;
 
