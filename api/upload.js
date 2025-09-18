@@ -1,7 +1,5 @@
-// api/upload.js
 import fetch from 'node-fetch';
-import formidable from 'formidable';
-import fs from 'fs';
+import Busboy from 'busboy';
 import path from 'path';
 import { getCookie, getRandomSuffix } from '../utils/helpers.js';
 
@@ -11,73 +9,97 @@ export const config = {
     },
 };
 
-
-
-export default async function handler(request, response) {
-    if (request.method !== 'POST') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
+export default async function handler(req, res) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const accessToken = getCookie(request.headers.cookie, 'accessToken');
-
+    const accessToken = getCookie(req.headers.cookie, 'accessToken');
     if (!accessToken) {
-        return response.status(401).json({ error: 'Unauthorized: Access token not found in cookies.' });
+        return res.status(401).json({ error: 'Unauthorized: Access token not found in cookies.' });
     }
 
     try {
-        const form = formidable({});
-        const [fields, files] = await form.parse(request);
+        const busboy = Busboy({ headers: req.headers });
+        let folder = '';
+        let subfolder = '';
+        const uploads = [];
 
-        const file = files.file[0];
-        const folder = fields.folder[0];
-        const subfolder = fields.subfolder[0];
-
-        if (!file || !folder || !subfolder) {
-            return response.status(400).json({ error: 'Missing file or folder information.' });
-        }
-
-        const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folder}`;
-        const encodedBaseFolder = encodeURIComponent(baseFolder);
-
-        // Проверяем и создаем папку
-        const checkFolderRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
-            method: "GET",
-            headers: { Authorization: `OAuth ${accessToken}` }
-        });
-        if (checkFolderRes.status === 404) {
-            await fetch(`https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`, {
-                method: "PUT",
-                headers: { Authorization: `OAuth ${accessToken}` }
-            });
-        }
-
-        // Получаем ссылку для загрузки
-        const ext = path.extname(file.originalFilename);
-        const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
-
-        const uploadUrlRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedBaseFolder}/${encodeURIComponent(newFileName)}&overwrite=true`, {
-            method: "GET",
-            headers: { Authorization: `OAuth ${accessToken}` }
+        busboy.on('field', (name, val) => {
+            if (name === 'folder') folder = val;
+            if (name === 'subfolder') subfolder = val;
         });
 
-        const uploadData = await uploadUrlRes.json();
-        if (!uploadData.href) throw new Error("Failed to get upload URL");
+        busboy.on('file', async (fieldname, file, filename, encoding, mimetype) => {
+            try {
+                if (!folder || !subfolder) {
+                    throw new Error('Missing folder or subfolder');
+                }
 
-        // Загружаем файл на Яндекс.Диск
-        const fileStream = fs.createReadStream(file.filepath);
-        await fetch(uploadData.href, {
-            method: "PUT",
-            body: fileStream,
-            headers: {
-                'Content-Type': file.mimetype,
-                'Content-Length': file.size
+                const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folder}`;
+                const encodedBaseFolder = encodeURIComponent(baseFolder);
+
+                // Проверяем/создаём папку
+                const checkFolderRes = await fetch(
+                    `https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`,
+                    { method: 'GET', headers: { Authorization: `OAuth ${accessToken}` } }
+                );
+
+                if (checkFolderRes.status === 404) {
+                    await fetch(
+                        `https://cloud-api.yandex.net/v1/disk/resources?path=${encodedBaseFolder}`,
+                        { method: 'PUT', headers: { Authorization: `OAuth ${accessToken}` } }
+                    );
+                }
+
+                // Формируем имя
+                const ext = path.extname(filename);
+                const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
+                const encodedPath = `${encodedBaseFolder}/${encodeURIComponent(newFileName)}`;
+
+                // Получаем ссылку для загрузки
+                const uploadUrlRes = await fetch(
+                    `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedPath}&overwrite=true`,
+                    { method: 'GET', headers: { Authorization: `OAuth ${accessToken}` } }
+                );
+
+                const uploadData = await uploadUrlRes.json();
+                if (!uploadData.href) throw new Error('Failed to get upload URL');
+
+                // Стримим в Яндекс.Диск
+                const uploadResp = await fetch(uploadData.href, {
+                    method: 'PUT',
+                    body: file,
+                    headers: { 'Content-Type': mimetype },
+                });
+
+                if (!uploadResp.ok) throw new Error(`Upload failed with ${uploadResp.status}`);
+
+                uploads.push({
+                    originalName: filename,
+                    savedAs: newFileName,
+                    folder: baseFolder,
+                    path: `${baseFolder}/${newFileName}`,
+                });
+            } catch (err) {
+                console.error('Upload error:', err);
+                uploads.push({
+                    originalName: filename,
+                    error: err.message,
+                });
             }
         });
 
-        response.status(200).json({ message: `Файл "${file.originalFilename}" сохранён как "${newFileName}" в "${folder}".` });
+        busboy.on('finish', () => {
+            res.status(200).json({
+                message: 'Загрузка завершена',
+                results: uploads,
+            });
+        });
 
+        req.pipe(busboy);
     } catch (err) {
         console.error(err);
-        response.status(500).json({ error: err.message || 'Internal Server Error' });
+        res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
 }

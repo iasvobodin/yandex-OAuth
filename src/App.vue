@@ -22,9 +22,12 @@
         Проверка очередей в трекере
       </button>
       <button id="selectBtn" :disabled="!isAuthorized" @click="selectFiles">Выбрать фотографии</button>
-      <button id="uploadBtn" :disabled="!isAuthorized || filesToUpload.length === 0" @click="uploadFiles">
-        Загрузить выбранные фото
-      </button>
+      <button
+  :disabled="!isAuthorized || filesToUpload.length === 0"
+  @click="() => uploadFiles(filesToUpload.map(f => f.file), folderName, subfolderName, log)"
+>
+  Загрузить выбранные фото
+</button>
     </div>
 
     <div id="preview">
@@ -48,7 +51,7 @@ import { ref, onMounted } from 'vue';
 import type { Ref } from 'vue';
 
 const AUTH_URL = '/api/auth';
-const GET_UPLOAD_URL = '/api/get-upload-url';
+// const GET_UPLOAD_URL = '/api/get-upload-url';
 
 // Интерфейс для типизации объектов файлов
 interface UploadFile {
@@ -466,93 +469,57 @@ const getFileNameWithoutExt = (name: string): string => {
 };
 
 // Логика загрузки
-const uploadFiles = async (): Promise<void> => {
-  if (filesToUpload.value.length === 0) {
-    log('Нет файлов для загрузки.');
-    return;
-  }
+async function uploadFiles(files: File[], folder: string, subfolder: string, log: (msg: string) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const formData = new FormData();
+    formData.append("folder", folder);
+    formData.append("subfolder", subfolder);
 
-  log('Начинаем загрузку...');
-  
-  for (const fileItem of filesToUpload.value) {
-    const file = fileItem.file;
-    
-    try {
-      fileItem.statusClass = 'uploading';
-      fileItem.statusText = '⬆ Загрузка...';
-      fileItem.progress = 0;
-
-      log(`Запрашиваем URL для загрузки: ${file.name} (${file.type})`);
-      
-      const getUrlRes = await fetch(GET_UPLOAD_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileType: file.type || 'application/octet-stream', // Fallback для пустого MIME type
-          fileName: file.name,
-          folder: folderName,
-          subfolder: subfolderName,
-        }),
-      });
-
-      if (!getUrlRes.ok) {
-        const errorData = await getUrlRes.json().catch(() => ({ error: `HTTP ${getUrlRes.status}` }));
-        throw new Error(errorData.error || `Ошибка сервера: ${getUrlRes.status}`);
-      }
-
-      const { uploadUrl, newFileName } = await getUrlRes.json() as { uploadUrl: string, newFileName: string };
-      log(`Получен URL для загрузки, новое имя файла: ${newFileName}`);
-
-      // Загружаем файл с отслеживанием прогресса
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            fileItem.progress = Math.round((e.loaded / e.total) * 100);
-          }
-        };
-        
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`Ошибка загрузки: HTTP ${xhr.status}`));
-          }
-        };
-        
-        xhr.onerror = () => reject(new Error('Сетевая ошибка при загрузке'));
-        xhr.ontimeout = () => reject(new Error('Тайм-аут загрузки'));
-        
-        xhr.open('PUT', uploadUrl, true);
-        xhr.timeout = 300000; // 5 минут тайм-аут
-        
-        // Устанавливаем правильный Content-Type
-        if (file.type) {
-          xhr.setRequestHeader('Content-Type', file.type);
-        }
-        
-        xhr.send(file);
-      });
-
-      log(`✅ Файл "${file.name}" успешно загружен как "${newFileName}"`);
-      fileItem.statusClass = 'success';
-      fileItem.statusText = '✅ Загружено';
-      fileItem.progress = 100;
-      
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Неизвестная ошибка';
-      log(`❌ Ошибка при загрузке "${file.name}": ${errorMessage}`);
-      fileItem.statusClass = 'error';
-      fileItem.statusText = '❌ Ошибка';
-      fileItem.progress = 0;
+    for (const file of files) {
+      formData.append("file", file, file.name);
     }
-  }
 
-  log('Загрузка завершена');
-};
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload", true);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        log(`⬆️ Загрузка: ${percent}%`);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const resp = JSON.parse(xhr.responseText);
+
+          if (resp.results && Array.isArray(resp.results)) {
+            resp.results.forEach((r: any) => {
+              if (r.error) {
+                log(`❌ Ошибка: ${r.originalName} → ${r.error}`);
+              } else {
+                log(`✅ Файл "${r.originalName}" сохранён как "${r.savedAs}" в папке "${r.folder}"`);
+              }
+            });
+          } else {
+            log("⚠️ Ответ сервера не содержит результатов.");
+          }
+
+          resolve();
+        } catch (e) {
+          reject(new Error("Ошибка парсинга ответа сервера"));
+        }
+      } else {
+        reject(new Error(`Ошибка загрузки: HTTP ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Ошибка сети при загрузке"));
+    xhr.send(formData);
+  });
+}
+
 </script>
 
 <style scoped>

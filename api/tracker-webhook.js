@@ -51,14 +51,10 @@ export default async function handler(req, res) {
         console.log("Issue summary:", issue.summary);
 
         // 4️⃣ Email поставщика
-
-
         // Найти ключ, который оканчивается на '--supplierEmail'
         const emailKey = Object.keys(issue).find(k => k.endsWith('supplierEmail'));
         const supplierEmail = emailKey ? issue[emailKey] : 'iasvobodin@gmail.com';
         console.log("Supplier email:", supplierEmail);
-
-
 
         // const supplierEmail = issue.customFields?.supplier_email?.value || "iasvobodin@gmail.com";
         console.log("Supplier email:", supplierEmail);
