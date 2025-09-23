@@ -195,53 +195,56 @@ const handleFileChange = async (event: Event) => {
   const files = Array.from((event.target as HTMLInputElement).files || []);
 
   for (const file of files) {
-    log(`${file.type}, ${file.name}`);
-    let thumbnail: string | null = null;
     let fileToUpload: File = file;
+    let thumbnail: string | null = null;
 
     try {
-      if (file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".heic")) {
-        if (await isReallyHeic(file)) {
-          // Конвертируем HEIC в JPEG
-          try {
-            const jpegBlob = await heicTo({
-              blob: file,
-              type: "image/jpeg",
-              quality: 0.9
-            });
-            if (jpegBlob) {
-              thumbnail = URL.createObjectURL(jpegBlob);
-              fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), { type: "image/jpeg" });
-            } else {
-              log(`heic-to вернул null blob для "${file.name}"`);
-              thumbnail = URL.createObjectURL(file); // fallback
-            }
-          } catch (err) {
-            log(`Ошибка конвертации HEIC "${file.name}": ${err}`);
-            thumbnail = URL.createObjectURL(file);
-          }
-        } else {
-          thumbnail = URL.createObjectURL(file);
-        }
-      } else if (file.type.startsWith("video/")) {
+      // Проверяем HEIC / HEIF
+      if (await isReallyHeic(file)) {
+        log(`⚠ Подозрение на подставной HEIC: "${file.name}", тип: ${file.type}`);
         try {
-          thumbnail = await createVideoThumbnail(file);
-        } catch (e) {
-          log(`Ошибка создания превью видео "${file.name}": ${e}`);
+          const jpegBlob = await heicTo({
+            blob: file,
+            type: "image/jpeg",
+            quality: 0.9
+          });
+          if (jpegBlob) {
+            fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
+              type: "image/jpeg",
+            });
+            log(`✅ Файл "${file.name}" конвертирован в JPEG: "${fileToUpload.name}"`);
+          } else {
+            log(`❌ heic-to вернул null для "${file.name}", оставляем оригинал`);
+          }
+        } catch (err) {
+          log(`❌ Ошибка конвертации HEIC "${file.name}": ${err}`);
         }
       }
-    } catch (err) {
-      log(`Ошибка обработки файла "${file.name}": ${err}`);
-    }
 
-    filesToUpload.value.push({
-      file: fileToUpload, // используем гарантированно правильный файл
-      name: fileToUpload.name,
-      progress: 0,
-      statusClass: "waiting",
-      statusText: "⏳ Ожидает",
-      thumbnail,
-    });
+      // Создаём превью
+      if (fileToUpload.type.startsWith("image/")) {
+        thumbnail = URL.createObjectURL(fileToUpload);
+      } else if (fileToUpload.type.startsWith("video/")) {
+        try {
+          thumbnail = await createVideoThumbnail(fileToUpload);
+        } catch (e) {
+          log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
+        }
+      }
+
+      // Добавляем в очередь на загрузку
+      filesToUpload.value.push({
+        file: fileToUpload,
+        name: fileToUpload.name,
+        progress: 0,
+        statusClass: "waiting",
+        statusText: "⏳ Ожидает",
+        thumbnail,
+      });
+
+    } catch (err: any) {
+      log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
+    }
   }
 };
 

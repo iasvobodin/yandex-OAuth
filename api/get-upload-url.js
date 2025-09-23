@@ -63,8 +63,8 @@ export default async function handler(request, response) {
 
         const uploadData = await uploadRes.json();
         if (!uploadRes.ok) {
-            const errorText = await res.text();
-            console.error('Yandex response:', res.status, errorText);
+            const errorText = await uploadRes.text();
+            console.error('Yandex response:', uploadRes.status, errorText);
             throw new Error("Failed to get upload URL");
         }
         if (!uploadData.href) throw new Error("Failed to get upload URL");
