@@ -308,44 +308,41 @@ const createImageThumbnailHEIC = async (file: File): Promise<string> => {
   }
 };
 
-// === Превью для видео ===
-const createVideoThumbnail = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
+// === Исправленная функция превью для видео ===
+const createVideoThumbnail = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const url = URL.createObjectURL(file);
     
     video.src = url;
     video.muted = true;
     video.playsInline = true;
-    
-    let loaded = false;
-    let seeked = false;
+    video.crossOrigin = 'anonymous'; // Важно для CORS
+
+    let isSuccess = false;
+    let isError = false;
 
     const cleanup = () => {
-      URL.revokeObjectURL(url);
+      if (!isSuccess) {
+        URL.revokeObjectURL(url);
+      }
       video.remove();
     };
 
-    const onSuccess = () => {
-      if (!loaded || !seeked) return;
+    const onSuccess = (canvas: HTMLCanvasElement) => {
+      if (isSuccess || isError) return;
+      isSuccess = true;
       
       try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('No canvas context');
-        
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
         // Масштабируем если нужно
         const maxSize = 200;
-        if (canvas.width > maxSize || canvas.height > maxSize) {
+        let { width, height } = canvas;
+        
+        if (width > maxSize || height > maxSize) {
           const scaledCanvas = document.createElement('canvas');
           const scaledCtx = scaledCanvas.getContext('2d');
           if (!scaledCtx) throw new Error('No scaled canvas context');
           
-          let { width, height } = canvas;
           if (width > height && width > maxSize) {
             height = Math.round((height * maxSize) / width);
             width = maxSize;
@@ -368,30 +365,150 @@ const createVideoThumbnail = (file: File): Promise<string> =>
       }
     };
 
-    video.onloadeddata = () => {
-      loaded = true;
-      // Пытаемся перемотать к началу видео
-      video.currentTime = Math.min(0.1, video.duration * 0.1);
-    };
-
-    video.onseeked = () => {
-      seeked = true;
-      onSuccess();
-    };
-
-    video.onerror = () => {
+    const onError = (error: string) => {
+      if (isSuccess || isError) return;
+      isError = true;
       cleanup();
-      reject(new Error('Video error'));
+      reject(new Error(error));
     };
+
+    video.addEventListener('loadeddata', () => {
+      try {
+        // Устанавливаем время для захвата кадра (первые 2 секунды или 10% длительности)
+        const seekTime = Math.min(2, video.duration * 0.1);
+        video.currentTime = seekTime;
+      } catch (err) {
+        // Если не можем установить время, пробуем с текущего положения
+        video.currentTime = 0.1;
+      }
+    });
+
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          onError('No canvas context available');
+          return;
+        }
+
+        // Рисуем видео на canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Проверяем что canvas не пустой
+        const imageData = ctx.getImageData(0, 0, 1, 1).data;
+        if (imageData[3] === 0) { // Если альфа-канал прозрачный
+          onError('Video frame is empty');
+          return;
+        }
+
+        onSuccess(canvas);
+      } catch (err) {
+        onError(`Error drawing video frame: ${err}`);
+      }
+    });
+
+    video.addEventListener('error', () => {
+      onError('Video loading error');
+    });
+
+    video.addEventListener('canplay', () => {
+      // Пытаемся воспроизвести чтобы активировать декодирование
+      video.play().catch(() => {
+        // Игнорируем ошибки autoplay, это нормально
+      });
+    });
 
     // Таймаут на случай если видео не загрузится
-    setTimeout(() => {
-      if (!loaded || !seeked) {
-        cleanup();
-        reject(new Error('Video load timeout'));
-      }
+    const timeoutId = setTimeout(() => {
+      onError('Video load timeout');
     }, 10000);
+
+    // Очистка таймаута при успехе/ошибке
+    const clearTimeoutSafe = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+
+    video.addEventListener('loadeddata', clearTimeoutSafe);
+    video.addEventListener('error', clearTimeoutSafe);
   });
+};
+
+// === Альтернативная упрощенная версия для видео ===
+// const createVideoThumbnailSimple = (file: File): Promise<string> => {
+//   return new Promise((resolve, reject) => {
+//     const video = document.createElement('video');
+//     const url = URL.createObjectURL(file);
+    
+//     video.src = url;
+//     video.muted = true;
+//     video.playsInline = true;
+//     video.currentTime = 1; // Берем кадр на 1 секунде
+
+//     video.onseeked = () => {
+//       try {
+//         const canvas = document.createElement('canvas');
+//         canvas.width = video.videoWidth;
+//         canvas.height = video.videoHeight;
+//         const ctx = canvas.getContext('2d');
+        
+//         if (ctx) {
+//           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+//           // Масштабируем
+//           const maxSize = 200;
+//           let width = canvas.width;
+//           let height = canvas.height;
+          
+//           if (width > maxSize || height > maxSize) {
+//             const scaledCanvas = document.createElement('canvas');
+//             const scaledCtx = scaledCanvas.getContext('2d');
+//             if (scaledCtx) {
+//               if (width > height && width > maxSize) {
+//                 height = Math.round((height * maxSize) / width);
+//                 width = maxSize;
+//               } else if (height > maxSize) {
+//                 width = Math.round((width * maxSize) / height);
+//                 height = maxSize;
+//               }
+              
+//               scaledCanvas.width = width;
+//               scaledCanvas.height = height;
+//               scaledCtx.drawImage(canvas, 0, 0, width, height);
+//               resolve(scaledCanvas.toDataURL('image/jpeg', 0.7));
+//             } else {
+//               resolve(canvas.toDataURL('image/jpeg', 0.7));
+//             }
+//           } else {
+//             resolve(canvas.toDataURL('image/jpeg', 0.7));
+//           }
+//         } else {
+//           reject(new Error('No canvas context'));
+//         }
+//       } catch (err) {
+//         reject(err);
+//       } finally {
+//         URL.revokeObjectURL(url);
+//       }
+//     };
+
+//     video.onerror = () => {
+//       URL.revokeObjectURL(url);
+//       reject(new Error('Video error'));
+//     };
+
+//     // Таймаут
+//     setTimeout(() => {
+//       if (video.readyState < 2) { // HAVE_CURRENT_DATA
+//         URL.revokeObjectURL(url);
+//         reject(new Error('Video load timeout'));
+//       }
+//     }, 5000);
+//   });
+// };
 
 // === Fallback превью ===
 const createFallbackThumbnail = (type: 'IMAGE' | 'VIDEO' | 'HEIC' | 'FILE'): string => {
