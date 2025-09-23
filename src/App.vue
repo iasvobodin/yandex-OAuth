@@ -170,7 +170,7 @@ const selectFiles = (): void => {
 // @ts-ignore — если нет типов
 import initLibHeif from "libheif-js/wasm-bundle";
 
-export async function heicToJpeg(file: File): Promise<Blob | null> {
+async function heicToJpeg(file: File): Promise<Blob | null> {
   try {
     const libheif = await initLibHeif(); // Инициализация WASM
     console.log("libheif инициализирован", libheif);
