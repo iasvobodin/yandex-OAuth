@@ -193,7 +193,10 @@ const createVideoThumbnail = (file: File): Promise<string> => {
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg');
-        URL.revokeObjectURL(video.src);
+        video.onloadeddata = () => {
+  URL.revokeObjectURL(video.src);
+};
+        // URL.revokeObjectURL(video.src);
         resolve(dataUrl);
       } else {
         reject(new Error('Не удалось получить контекст canvas'));
