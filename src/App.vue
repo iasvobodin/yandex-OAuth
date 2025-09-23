@@ -170,41 +170,31 @@ const handleFileChange = async (event: Event) => {
 
   for (const file of files) {
     log(`${file.type}, ${file.name}`);
-
     let thumbnail: string | null = null;
 
     try {
       if (file.type.startsWith("image/")) {
-        // Проверяем, HEIC ли это
         if (file.name.toLowerCase().endsWith(".heic")) {
-          // Конвертируем в JPEG
           try {
             const blobOrArray = await heic2any({
-            blob: file,
-            toType: "image/jpeg",
-            quality: 0.9,
-          });
+              blob: file,
+              toType: "image/jpeg",
+              quality: 0.9,
+            });
 
-          // Если вернулся массив, берем первый Blob
-          const blob = Array.isArray(blobOrArray)
-            ? blobOrArray[0]
-            : blobOrArray;
-          thumbnail = URL.createObjectURL(blob);
+            // Берем первый Blob если массив
+            const blob = Array.isArray(blobOrArray) ? blobOrArray[0] : blobOrArray;
+
+            // Создаем FileReader для получения DataURL (надёжнее для превью)
+            thumbnail = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = (err) => reject(err);
+              reader.readAsDataURL(blob);
+            });
           } catch (error) {
-            console.log(error);
-            
+            console.log("Ошибка конвертации HEIC:", error);
           }
-          const blobOrArray = await heic2any({
-            blob: file,
-            toType: "image/jpeg",
-            quality: 0.9,
-          });
-
-          // Если вернулся массив, берем первый Blob
-          const blob = Array.isArray(blobOrArray)
-            ? blobOrArray[0]
-            : blobOrArray;
-          thumbnail = URL.createObjectURL(blob);
         } else {
           thumbnail = URL.createObjectURL(file);
         }
