@@ -32,28 +32,29 @@ export default async function handler(request, response) {
             });
         }
 
-        // 2. Получаем ссылку для загрузки от Яндекса
-        const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
+        // // 2. Получаем ссылку для загрузки от Яндекса
+        // const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
 
-        if (!ext && fileType) {
-            const mimeToExt = {
-                jpg: 'image/jpeg',
-                jpeg: 'image/jpeg',
-                png: 'image/png',
-                gif: 'image/gif',
-                webp: 'image/webp',
-                svg: 'image/svg+xml',
-                pdf: 'application/pdf',
-                txt: 'text/plain',
-                // Добавляем расширения HEIC и HEIF
-                heic: 'image/heic',
-                heif: 'image/heic'
-            };
-            ext = mimeToExt[file.type] || '';
-        }
+        // if (!ext && fileType) {
+        //     const mimeToExt = {
+        //         jpg: 'image/jpeg',
+        //         jpeg: 'image/jpeg',
+        //         png: 'image/png',
+        //         gif: 'image/gif',
+        //         webp: 'image/webp',
+        //         svg: 'image/svg+xml',
+        //         pdf: 'application/pdf',
+        //         txt: 'text/plain',
+        //         // Добавляем расширения HEIC и HEIF
+        //         heic: 'image/heic',
+        //         heif: 'image/heic'
+        //     };
+        //     ext = mimeToExt[file.type] || '';
+        // }
 
+        const newFileName = `${subfolder}__${getRandomSuffix()}${fileName.slice(fileName.lastIndexOf('.'))}`;
 
-        const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
+        // const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
 
         const uploadRes = await fetch(`https://cloud-api.yandex.net/v1/disk/resources/upload?path=${encodedBaseFolder}/${encodeURIComponent(newFileName)}&overwrite=true`, {
             method: "GET",

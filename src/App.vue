@@ -170,6 +170,25 @@ const selectFiles = (): void => {
 // @ts-ignore — если нет типов
 import initLibHeif from "libheif-js/wasm-bundle";
 
+async function isReallyHeic(file: File): Promise<boolean> {
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const ascii = new TextDecoder().decode(header);
+  return (
+    ascii.includes("ftypheic") ||
+    ascii.includes("ftypheif") ||
+    ascii.includes("ftypheix") ||
+    ascii.includes("ftyphevc") ||
+    ascii.includes("ftyphevx") ||
+    ascii.includes("ftypmif1") ||
+    ascii.includes("ftypmsf1")
+  );
+}
+
+// Вспомогательная функция для замены расширения
+function replaceExtension(filename: string, newExt: string) {
+  const idx = filename.lastIndexOf(".");
+  return idx >= 0 ? filename.slice(0, idx) + "." + newExt : filename + "." + newExt;
+}
 
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
@@ -178,46 +197,46 @@ const handleFileChange = async (event: Event) => {
   for (const file of files) {
     log(`${file.type}, ${file.name}`);
     let thumbnail: string | null = null;
-
-    // const lowerName = file.name.toLowerCase();
-    // const isHeicFile = lowerName.endsWith(".heic");
+    let fileToUpload: File = file;
 
     try {
-      if (await isHeic(file)) {
-        // Конвертируем HEIC в JPEG
-        try {
-          const blob = await heicTo({
-            blob: file,
-            type: "image/jpeg",
-            quality: 0.8
-          });
-          // blob может быть null или ошибка — проверим
-          if (blob) {
-            thumbnail = URL.createObjectURL(blob);
-          } else {
-            log(`heic-to вернул null blob для "${file.name}"`);
-            thumbnail = URL.createObjectURL(file); // fallback
+      if (file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".heic")) {
+        if (await isReallyHeic(file)) {
+          // Конвертируем HEIC в JPEG
+          try {
+            const jpegBlob = await heicTo({
+              blob: file,
+              type: "image/jpeg",
+              quality: 0.9
+            });
+            if (jpegBlob) {
+              thumbnail = URL.createObjectURL(jpegBlob);
+              fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), { type: "image/jpeg" });
+            } else {
+              log(`heic-to вернул null blob для "${file.name}"`);
+              thumbnail = URL.createObjectURL(file); // fallback
+            }
+          } catch (err) {
+            log(`Ошибка конвертации HEIC "${file.name}": ${err}`);
+            thumbnail = URL.createObjectURL(file);
           }
-        } catch (err) {
-          log(`Ошибка в heic-to конвертации "${file.name}": ${err}`);
-          thumbnail = URL.createObjectURL(file); // fallback
+        } else {
+          thumbnail = URL.createObjectURL(file);
         }
-      } else if (file.type.startsWith("image/")) {
-        thumbnail = URL.createObjectURL(file);
       } else if (file.type.startsWith("video/")) {
         try {
           thumbnail = await createVideoThumbnail(file);
         } catch (e) {
-          log(`Ошибка создания превью для видео "${file.name}": ${e}`);
+          log(`Ошибка создания превью видео "${file.name}": ${e}`);
         }
       }
     } catch (err) {
-      log(`Ошибка проверки HEIC для "${file.name}": ${err}`);
+      log(`Ошибка обработки файла "${file.name}": ${err}`);
     }
 
     filesToUpload.value.push({
-      file,
-      name: file.name,
+      file: fileToUpload, // используем гарантированно правильный файл
+      name: fileToUpload.name,
       progress: 0,
       statusClass: "waiting",
       statusText: "⏳ Ожидает",
@@ -258,7 +277,7 @@ const createVideoThumbnail = (file: File): Promise<string> => {
   });
 };
 
-// Логика загрузки
+
 const uploadFiles = async (): Promise<void> => {
   if (filesToUpload.value.length === 0) {
     log("Нет файлов для загрузки.");
@@ -267,7 +286,26 @@ const uploadFiles = async (): Promise<void> => {
 
   log("Начинаем загрузку...");
   for (const fileItem of filesToUpload.value) {
-    const file = fileItem.file;
+    let file = fileItem.file;
+
+    // Проверяем HEIC и конвертируем при необходимости
+    if (await isReallyHeic(file)) {
+      try {
+        const jpegBlob = await heicTo({
+          blob: file,
+          type: "image/jpeg",
+          quality: 0.9
+        });
+        if (jpegBlob) {
+          file = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
+            type: "image/jpeg",
+          });
+        }
+      } catch (err) {
+        log(`Ошибка конвертации HEIC "${file.name}": ${err}`);
+      }
+    }
+
     try {
       fileItem.statusClass = "uploading";
       fileItem.statusText = "⬆ Загрузка...";
@@ -285,6 +323,7 @@ const uploadFiles = async (): Promise<void> => {
           subfolder: subfolderName,
         }),
       });
+
       log(`${file.type},${file.name}`);
       if (!getUrlRes.ok) {
         const errorData = await getUrlRes.json();
@@ -328,10 +367,12 @@ const uploadFiles = async (): Promise<void> => {
       fileItem.progress = 100;
     }
   }
+
   if (fileInputRef.value) {
     fileInputRef.value.value = "";
   }
 };
+
 </script>
 
 <style scoped>
