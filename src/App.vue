@@ -12,14 +12,24 @@
         ref="fileInputRef"
         @change="handleFileChange"
       />
-      <button id="authBtn" @click="handleAuth" :style="{ display: authBtnVisible ? 'block' : 'none' }">
+      <button
+        id="authBtn"
+        @click="handleAuth"
+        :style="{ display: authBtnVisible ? 'block' : 'none' }"
+      >
         Авторизоваться
       </button>
-            <button id="QUEUES" @click="checkQueues" >
+      <button id="QUEUES" @click="checkQueues">
         Проверка очередей в трекере
       </button>
-      <button id="selectBtn" :disabled="!isAuthorized" @click="selectFiles">Выбрать фотографии</button>
-      <button id="uploadBtn" :disabled="!isAuthorized || filesToUpload.length === 0" @click="uploadFiles">
+      <button id="selectBtn" :disabled="!isAuthorized" @click="selectFiles">
+        Выбрать фотографии
+      </button>
+      <button
+        id="uploadBtn"
+        :disabled="!isAuthorized || filesToUpload.length === 0"
+        @click="uploadFiles"
+      >
         Загрузить выбранные фото
       </button>
     </div>
@@ -30,7 +40,10 @@
         <div v-else class="icon-placeholder">📎</div>
         <div class="file-info">{{ file.name }}</div>
         <div class="progress-container">
-          <div class="progress-bar" :style="{ width: file.progress + '%' }"></div>
+          <div
+            class="progress-bar"
+            :style="{ width: file.progress + '%' }"
+          ></div>
         </div>
         <div :class="['status', file.statusClass]">{{ file.statusText }}</div>
       </div>
@@ -41,12 +54,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import type { Ref } from 'vue';
-import heic2any from 'heic2any';
+import { ref, onMounted } from "vue";
+import type { Ref } from "vue";
+import heic2any from "heic2any";
 
-const AUTH_URL = '/api/auth';
-const GET_UPLOAD_URL = '/api/get-upload-url';
+const AUTH_URL = "/api/auth";
+const GET_UPLOAD_URL = "/api/get-upload-url";
 
 // Интерфейс для типизации объектов файлов
 interface UploadFile {
@@ -59,33 +72,33 @@ interface UploadFile {
 }
 
 const filesToUpload: Ref<UploadFile[]> = ref([]);
-const outputLog = ref<string>('');
+const outputLog = ref<string>("");
 const isAuthorized = ref<boolean>(false);
 const authBtnVisible = ref<boolean>(true);
-const infoText = ref<string>('Вы загружаете фотографии на общий диск');
+const infoText = ref<string>("Вы загружаете фотографии на общий диск");
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-let folderName: string = 'Фото';
-let subfolderName: string = 'Новая папка';
+let folderName: string = "Фото";
+let subfolderName: string = "Новая папка";
 
 // Логгирование
 const log = (msg: string) => {
-  outputLog.value += msg + '\n';
+  outputLog.value += msg + "\n";
 };
 
 // Проверка статуса авторизации при загрузке страницы
 onMounted(() => {
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.has('folder') || urlParams.has('subfolder')) {
+  if (urlParams.has("folder") || urlParams.has("subfolder")) {
     const data = {
-      folder: urlParams.get('folder'),
-      subfolder: urlParams.get('subfolder'),
+      folder: urlParams.get("folder"),
+      subfolder: urlParams.get("subfolder"),
     };
-    sessionStorage.setItem('uploadData', JSON.stringify(data));
+    sessionStorage.setItem("uploadData", JSON.stringify(data));
   }
 
-  const storedData = sessionStorage.getItem('uploadData');
+  const storedData = sessionStorage.getItem("uploadData");
   if (storedData) {
     const data = JSON.parse(storedData);
     folderName = data.folder || folderName;
@@ -99,18 +112,18 @@ onMounted(() => {
 // Авторизация и выбор файлов
 const checkAuthStatus = async () => {
   try {
-    const res = await fetch(AUTH_URL, { method: 'HEAD' });
+    const res = await fetch(AUTH_URL, { method: "HEAD" });
     if (res.ok) {
-      log('✅ Авторизация успешна!');
+      log("✅ Авторизация успешна!");
       authBtnVisible.value = false;
       isAuthorized.value = true;
     } else {
-      log('⚠️ Требуется авторизация.');
+      log("⚠️ Требуется авторизация.");
       authBtnVisible.value = true;
       isAuthorized.value = false;
     }
   } catch (err) {
-    log('❌ Произошла ошибка при проверке авторизации.');
+    log("❌ Произошла ошибка при проверке авторизации.");
     authBtnVisible.value = true;
     isAuthorized.value = false;
   }
@@ -122,27 +135,26 @@ interface QueueItem {
 // проверка очереди в трекере
 const checkQueues = async () => {
   try {
-    const res = await fetch("/api/get-queues", { method: 'GET' });
+    const res = await fetch("/api/get-queues", { method: "GET" });
     if (res.ok) {
       log(`✅ Очереди получены${JSON.stringify(res)}`);
     } else {
-      log('⚠️ что то не так');
-      return
+      log("⚠️ что то не так");
+      return;
     }
-     // Получаем данные в формате JSON
-        const data: QueueItem[] = await res.json();
-       const names = data.map(item => item.name); // Ошибка исчезнет, так как item теперь имеет тип QueueItem
-        // Теперь data содержит JSON-ответ, и его можно использовать
-        log(`✅ Очереди получены`);
-        log(JSON.stringify(names, null, 2)); // Выводим отформатированный JSON
-        
+    // Получаем данные в формате JSON
+    const data: QueueItem[] = await res.json();
+    const names = data.map((item) => item.name); // Ошибка исчезнет, так как item теперь имеет тип QueueItem
+    // Теперь data содержит JSON-ответ, и его можно использовать
+    log(`✅ Очереди получены`);
+    log(JSON.stringify(names, null, 2)); // Выводим отформатированный JSON
   } catch (err) {
-    log('❌ Произошла Ошибка работы с трекером');
+    log("❌ Произошла Ошибка работы с трекером");
   }
 };
 
 const handleAuth = (): void => {
-  log('Инициируем авторизацию...');
+  log("Инициируем авторизацию...");
   window.location.href = AUTH_URL;
 };
 
@@ -151,7 +163,6 @@ const selectFiles = (): void => {
     fileInputRef.value.click();
   }
 };
-
 
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
@@ -163,21 +174,41 @@ const handleFileChange = async (event: Event) => {
     let thumbnail: string | null = null;
 
     try {
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith("image/")) {
         // Проверяем, HEIC ли это
-        if (file.name.toLowerCase().endsWith('.heic')) {
+        if (file.name.toLowerCase().endsWith(".heic")) {
           // Конвертируем в JPEG
-         let blobOrArray = await heic2any({
+          try {
+            const blobOrArray = await heic2any({
             blob: file,
-            toType: 'image/jpeg',
+            toType: "image/jpeg",
             quality: 0.9,
           });
 
           // Если вернулся массив, берем первый Blob
-          const blob = Array.isArray(blobOrArray) ? blobOrArray[0] : blobOrArray;
+          const blob = Array.isArray(blobOrArray)
+            ? blobOrArray[0]
+            : blobOrArray;
           thumbnail = URL.createObjectURL(blob);
+          } catch (error) {
+            console.log(error);
+            
+          }
+          const blobOrArray = await heic2any({
+            blob: file,
+            toType: "image/jpeg",
+            quality: 0.9,
+          });
+
+          // Если вернулся массив, берем первый Blob
+          const blob = Array.isArray(blobOrArray)
+            ? blobOrArray[0]
+            : blobOrArray;
+          thumbnail = URL.createObjectURL(blob);
+        } else {
+          thumbnail = URL.createObjectURL(file);
         }
-      } else if (file.type.startsWith('video/')) {
+      } else if (file.type.startsWith("video/")) {
         try {
           thumbnail = await createVideoThumbnail(file);
         } catch (e) {
@@ -192,40 +223,39 @@ const handleFileChange = async (event: Event) => {
       file,
       name: file.name,
       progress: 0,
-      statusClass: 'waiting',
-      statusText: '⏳ Ожидает',
+      statusClass: "waiting",
+      statusText: "⏳ Ожидает",
       thumbnail,
     });
   }
 };
 
-
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
+    const video = document.createElement("video");
+    video.preload = "metadata";
     video.onloadedmetadata = () => {
       video.currentTime = 1;
     };
     video.onseeked = () => {
-      const canvas = document.createElement('canvas');
+      const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      const context = canvas.getContext('2d');
+      const context = canvas.getContext("2d");
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg');
+        const dataUrl = canvas.toDataURL("image/jpeg");
         video.onloadeddata = () => {
-  URL.revokeObjectURL(video.src);
-};
+          URL.revokeObjectURL(video.src);
+        };
         // URL.revokeObjectURL(video.src);
         resolve(dataUrl);
       } else {
-        reject(new Error('Не удалось получить контекст canvas'));
+        reject(new Error("Не удалось получить контекст canvas"));
       }
     };
     video.onerror = () => {
-      reject(new Error('Ошибка создания превью видео.'));
+      reject(new Error("Ошибка создания превью видео."));
     };
     video.src = URL.createObjectURL(file);
   });
@@ -234,22 +264,22 @@ const createVideoThumbnail = (file: File): Promise<string> => {
 // Логика загрузки
 const uploadFiles = async (): Promise<void> => {
   if (filesToUpload.value.length === 0) {
-    log('Нет файлов для загрузки.');
+    log("Нет файлов для загрузки.");
     return;
   }
 
-  log('Начинаем загрузку...');
+  log("Начинаем загрузку...");
   for (const fileItem of filesToUpload.value) {
     const file = fileItem.file;
     try {
-      fileItem.statusClass = 'uploading';
-      fileItem.statusText = '⬆ Загрузка...';
+      fileItem.statusClass = "uploading";
+      fileItem.statusText = "⬆ Загрузка...";
       fileItem.progress = 0;
 
       const getUrlRes = await fetch(GET_UPLOAD_URL, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           fileType: file.type,
@@ -258,17 +288,20 @@ const uploadFiles = async (): Promise<void> => {
           subfolder: subfolderName,
         }),
       });
- log(`${file.type},${file.name}`)
+      log(`${file.type},${file.name}`);
       if (!getUrlRes.ok) {
         const errorData = await getUrlRes.json();
         throw new Error(errorData.error);
       }
 
-      const { uploadUrl, newFileName } = await getUrlRes.json() as { uploadUrl: string, newFileName: string };
+      const { uploadUrl, newFileName } = (await getUrlRes.json()) as {
+        uploadUrl: string;
+        newFileName: string;
+      };
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('PUT', uploadUrl, true);
+        xhr.open("PUT", uploadUrl, true);
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
             fileItem.progress = Math.round((e.loaded / e.total) * 100);
@@ -281,23 +314,25 @@ const uploadFiles = async (): Promise<void> => {
             reject(new Error(`Ошибка загрузки: ${xhr.status}`));
           }
         };
-        xhr.onerror = () => reject(new Error('Сетевая ошибка'));
+        xhr.onerror = () => reject(new Error("Сетевая ошибка"));
         xhr.send(file);
       });
 
-      log(`Файл "${file.name}" сохранён как "${newFileName}" в "${folderName}".`);
-      fileItem.statusClass = 'success';
-      fileItem.statusText = '✅ Загружено';
+      log(
+        `Файл "${file.name}" сохранён как "${newFileName}" в "${folderName}".`
+      );
+      fileItem.statusClass = "success";
+      fileItem.statusText = "✅ Загружено";
       fileItem.progress = 100;
     } catch (err: any) {
       log(`Ошибка при загрузке "${file.name}": ${err.message}`);
-      fileItem.statusClass = 'error';
-      fileItem.statusText = '❌ Ошибка';
+      fileItem.statusClass = "error";
+      fileItem.statusText = "❌ Ошибка";
       fileItem.progress = 100;
     }
   }
   if (fileInputRef.value) {
-    fileInputRef.value.value = '';
+    fileInputRef.value.value = "";
   }
 };
 </script>
