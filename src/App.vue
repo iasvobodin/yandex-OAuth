@@ -58,7 +58,7 @@ import { ref, onMounted } from "vue";
 import type { Ref } from "vue";
 // import heic2any from "heic2any";
 // @ts-ignore
-import libheif from "libheif-js/wasm-bundle";
+import { isHeic, heicTo } from "heic-to";
 
 const AUTH_URL = "/api/auth";
 const GET_UPLOAD_URL = "/api/get-upload-url";
@@ -170,52 +170,6 @@ const selectFiles = (): void => {
 // @ts-ignore — если нет типов
 import initLibHeif from "libheif-js/wasm-bundle";
 
-async function heicToJpeg(file: File): Promise<Blob | null> {
-  try {
-    const libheif = await initLibHeif(); // Инициализация WASM
-    console.log("libheif инициализирован", libheif);
-
-    const buffer = await file.arrayBuffer();
-    const data = new Uint8Array(buffer);
-
-    const context = new libheif.HeifContext(data);
-    console.log("context", context);
-
-    const handle = context.getPrimaryImageHandle();
-    console.log("handle", handle);
-
-    const decoder = libheif.ImageDecoder("jpeg", handle);
-    const decoded = decoder.decode();
-    console.log("decoded", decoded);
-
-    // Получаем RGBA данные
-    const img = decoded.get_image();
-    const width = img.get_width();
-    const height = img.get_height();
-    const rgba = img.get_plane(0); // Uint8Array с RGBA
-
-    // Рисуем на canvas
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D context not available");
-
-    const imageData = ctx.createImageData(width, height);
-    imageData.data.set(rgba);
-    ctx.putImageData(imageData, 0, 0);
-
-    return await new Promise<Blob>((resolve) =>
-      canvas.toBlob((blob) => resolve(blob!), "image/jpeg", 0.9)
-    );
-  } catch (err) {
-    console.error("Ошибка конвертации HEIC → JPEG:", err);
-    return null;
-  }
-}
-
-// попытаемся импортировать wasm-бандл
 
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
@@ -225,29 +179,40 @@ const handleFileChange = async (event: Event) => {
     log(`${file.type}, ${file.name}`);
     let thumbnail: string | null = null;
 
-    const isHeic = file.name.toLowerCase().endsWith(".heic");
-    const isImage = file.type.startsWith("image/") || isHeic;
-    const isVideo = file.type.startsWith("video/");
+    const lowerName = file.name.toLowerCase();
+    const isHeicFile = lowerName.endsWith(".heic");
 
     try {
-      if (isImage) {
-        if (isHeic) {
-          const jpegBlob = await heicToJpeg(file);
-          if (jpegBlob) {
-            const previewUrl = URL.createObjectURL(jpegBlob);
-            console.log("Превью готово:", previewUrl);
+      if (isHeicFile && await isHeic(file)) {
+        // Конвертируем HEIC в JPEG
+        try {
+          const blob = await heicTo({
+            blob: file,
+            type: "image/jpeg",
+            quality: 0.8
+          });
+          // blob может быть null или ошибка — проверим
+          if (blob) {
+            thumbnail = URL.createObjectURL(blob);
+          } else {
+            log(`heic-to вернул null blob для "${file.name}"`);
+            thumbnail = URL.createObjectURL(file); // fallback
           }
-        } else {
-          thumbnail = URL.createObjectURL(file);
+        } catch (err) {
+          log(`Ошибка в heic-to конвертации "${file.name}": ${err}`);
+          thumbnail = URL.createObjectURL(file); // fallback
         }
-      } else if (isVideo) {
-        thumbnail = await createVideoThumbnail(file).catch((e) => {
-          log(`Ошибка создания превью видео "${file.name}": ${e}`);
-          return null;
-        });
+      } else if (file.type.startsWith("image/")) {
+        thumbnail = URL.createObjectURL(file);
+      } else if (file.type.startsWith("video/")) {
+        try {
+          thumbnail = await createVideoThumbnail(file);
+        } catch (e) {
+          log(`Ошибка создания превью для видео "${file.name}": ${e}`);
+        }
       }
     } catch (err) {
-      log(`Ошибка обработки файла "${file.name}": ${err}`);
+      log(`Ошибка проверки HEIC для "${file.name}": ${err}`);
     }
 
     filesToUpload.value.push({
@@ -260,6 +225,7 @@ const handleFileChange = async (event: Event) => {
     });
   }
 };
+
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
