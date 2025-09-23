@@ -12,6 +12,7 @@
     "busboy": "^1.6.0",
     "formidable": "^3.5.1",
     "heic2any": "^0.0.4",
+    "libheif-js": "^1.19.8",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.6",
     "vue": "^3.5.18"

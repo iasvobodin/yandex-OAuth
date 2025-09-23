@@ -56,7 +56,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import type { Ref } from "vue";
-import heic2any from "heic2any";
+// import heic2any from "heic2any";
+// @ts-ignore
+import libheif from "libheif-js/wasm-bundle"; 
 
 const AUTH_URL = "/api/auth";
 const GET_UPLOAD_URL = "/api/get-upload-url";
@@ -164,6 +166,8 @@ const selectFiles = (): void => {
   }
 };
 
+// попытаемся импортировать wasm-бандл
+
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
@@ -172,7 +176,6 @@ const handleFileChange = async (event: Event) => {
     log(`${file.type}, ${file.name}`);
     let thumbnail: string | null = null;
 
-    // Определяем, что это HEIC
     const isHeic = file.name.toLowerCase().endsWith(".heic");
     const isImage = file.type.startsWith("image/") || isHeic;
     const isVideo = file.type.startsWith("video/");
@@ -181,35 +184,40 @@ const handleFileChange = async (event: Event) => {
       if (isImage) {
         if (isHeic) {
           try {
-            const blobOrArray = await heic2any({
-              blob: file,
-              toType: "image/jpeg",
-              quality: 0.9,
-            });
+            const buffer = await file.arrayBuffer();
+            const decoder = new libheif.HeifDecoder();
+            const images = decoder.decode(buffer);
+            if (!images || images.length === 0) {
+              throw new Error("libheif-js: нет изображений после декодирования");
+            }
+            const img = images[0];
+            const width = img.get_width();
+            const height = img.get_height();
+            const rgba = img.data; // или как он предоставляет данные
 
-            // Берем первый Blob если массив
-            const blob = Array.isArray(blobOrArray) ? blobOrArray[0] : blobOrArray;
+            // Canvas
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error("Canvas context is null");
+            const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
+            ctx.putImageData(imageData, 0, 0);
 
-            // Надёжно создаем превью через DataURL
-            thumbnail = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = (err) => reject(err);
-              reader.readAsDataURL(blob);
-            });
+            thumbnail = canvas.toDataURL("image/jpeg", 0.9);
           } catch (error) {
-            log(`Ошибка конвертации HEIC для "${file.name}": ${error}`);
+            log(`Ошибка декодирования HEIC libheif-js для "${file.name}": ${error}`);
+            // fallback
+            thumbnail = URL.createObjectURL(file);
           }
         } else {
-          // Обычные изображения
           thumbnail = URL.createObjectURL(file);
         }
       } else if (isVideo) {
-        try {
-          thumbnail = await createVideoThumbnail(file);
-        } catch (e) {
-          log(`Ошибка создания превью для видео "${file.name}": ${e}`);
-        }
+        thumbnail = await createVideoThumbnail(file).catch(e => {
+          log(`Ошибка создания превью видео "${file.name}": ${e}`);
+          return null;
+        });
       }
     } catch (err) {
       log(`Ошибка обработки файла "${file.name}": ${err}`);
@@ -225,6 +233,7 @@ const handleFileChange = async (event: Event) => {
     });
   }
 };
+
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
