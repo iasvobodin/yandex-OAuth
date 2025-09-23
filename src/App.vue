@@ -6,7 +6,7 @@
       <input
         type="file"
         id="fileInput"
-        accept="image/*,video/*"
+        accept="image/*,image/heic,image/heif,video/*"
         multiple
         style="display: none"
         ref="fileInputRef"
@@ -114,16 +114,27 @@ const checkAuthStatus = async () => {
     isAuthorized.value = false;
   }
 };
-
+interface QueueItem {
+  name: string;
+  // добавьте другие свойства, которые вам нужны, чтобы избежать ошибок в будущем
+}
 // проверка очереди в трекере
 const checkQueues = async () => {
   try {
     const res = await fetch("/api/get-queues", { method: 'GET' });
     if (res.ok) {
-      log(`✅ Очереди получены${JSON.stringify(res.body)}`);
+      log(`✅ Очереди получены${JSON.stringify(res)}`);
     } else {
       log('⚠️ что то не так');
+      return
     }
+     // Получаем данные в формате JSON
+        const data: QueueItem[] = await res.json();
+       const names = data.map(item => item.name); // Ошибка исчезнет, так как item теперь имеет тип QueueItem
+        // Теперь data содержит JSON-ответ, и его можно использовать
+        log(`✅ Очереди получены`);
+        log(JSON.stringify(names, null, 2)); // Выводим отформатированный JSON
+        
   } catch (err) {
     log('❌ Произошла Ошибка работы с трекером');
   }
@@ -144,6 +155,7 @@ const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
   for (const file of files) {
+    log(`${file.type},${file.name}`)
     let thumbnail: string | null = null;
     if (file.type.startsWith('image/')) {
       thumbnail = URL.createObjectURL(file);
@@ -215,12 +227,13 @@ const uploadFiles = async (): Promise<void> => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          fileType: file.type,
           fileName: file.name,
           folder: folderName,
           subfolder: subfolderName,
         }),
       });
-
+ log(`${file.type},${file.name}`)
       if (!getUrlRes.ok) {
         const errorData = await getUrlRes.json();
         throw new Error(errorData.error);
