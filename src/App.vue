@@ -172,9 +172,14 @@ const handleFileChange = async (event: Event) => {
     log(`${file.type}, ${file.name}`);
     let thumbnail: string | null = null;
 
+    // Определяем, что это HEIC
+    const isHeic = file.name.toLowerCase().endsWith(".heic");
+    const isImage = file.type.startsWith("image/") || isHeic;
+    const isVideo = file.type.startsWith("video/");
+
     try {
-      if (file.type.startsWith("image/")) {
-        if (file.name.toLowerCase().endsWith(".heic")) {
+      if (isImage) {
+        if (isHeic) {
           try {
             const blobOrArray = await heic2any({
               blob: file,
@@ -185,7 +190,7 @@ const handleFileChange = async (event: Event) => {
             // Берем первый Blob если массив
             const blob = Array.isArray(blobOrArray) ? blobOrArray[0] : blobOrArray;
 
-            // Создаем FileReader для получения DataURL (надёжнее для превью)
+            // Надёжно создаем превью через DataURL
             thumbnail = await new Promise<string>((resolve, reject) => {
               const reader = new FileReader();
               reader.onload = () => resolve(reader.result as string);
@@ -193,16 +198,17 @@ const handleFileChange = async (event: Event) => {
               reader.readAsDataURL(blob);
             });
           } catch (error) {
-            console.log("Ошибка конвертации HEIC:", error);
+            log(`Ошибка конвертации HEIC для "${file.name}": ${error}`);
           }
         } else {
+          // Обычные изображения
           thumbnail = URL.createObjectURL(file);
         }
-      } else if (file.type.startsWith("video/")) {
+      } else if (isVideo) {
         try {
           thumbnail = await createVideoThumbnail(file);
         } catch (e) {
-          log(`Ошибка создания превью для видео "${file.name}"`);
+          log(`Ошибка создания превью для видео "${file.name}": ${e}`);
         }
       }
     } catch (err) {
