@@ -6,7 +6,7 @@
       <input
         type="file"
         id="fileInput"
-        accept="image/*,video/*"
+        accept="image/*,video/*,.heic,.heif"
         multiple
         capture="environment"
         style="display: none"
@@ -47,6 +47,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Ref } from 'vue';
+import heic2any from 'heic2any';
 
 interface UploadFile {
   file: File;
@@ -136,6 +137,8 @@ const handleFileChange = async (event: Event) => {
   }
 
   log(`Выбрано файлов: ${files.length}`);
+  
+  // Очищаем предыдущие файлы только если выбираем новые
   filesToUpload.value = [];
 
   for (const file of files) {
@@ -143,41 +146,48 @@ const handleFileChange = async (event: Event) => {
     try {
       let thumbnail: string | null = null;
 
+      // Создаем базовый объект файла
+      const uploadFile: UploadFile = {
+        file,
+        name: file.name,
+        progress: 0,
+        statusClass: 'waiting',
+        statusText: '⏳ Ожидает',
+        thumbnail: null,
+      };
+
+      filesToUpload.value.push(uploadFile);
+
+      // Асинхронно создаем превью
       if (file.type.startsWith('image/') || isImageFile(file)) {
         try {
-          // HEIC: сначала пробуем создать превью нативно
           if (isHEICFile(file)) {
             log(`Обнаружен HEIC/HEIF файл: ${file.name}`);
-            try {
-              thumbnail = await createImageThumbnailHEIC(file);
-            } catch (e) {
-              log(`⚠️ HEIC preview failed: ${e}`);
-              thumbnail = null;
-            }
+            thumbnail = await createImageThumbnailHEIC(file);
           } else {
             thumbnail = await createImageThumbnail(file);
           }
         } catch (e) {
           log(`⚠️ Ошибка при создании превью изображения: ${e}`);
-          thumbnail = null;
+          thumbnail = await createFallbackThumbnail(file.type.includes('video') ? 'VIDEO' : 'IMAGE');
         }
       } else if (file.type.startsWith('video/')) {
         try {
           thumbnail = await createVideoThumbnail(file);
         } catch (e) {
           log(`⚠️ Не удалось создать превью для видео: ${e}`);
-          thumbnail = null;
+          thumbnail = await createFallbackThumbnail('VIDEO');
         }
+      } else {
+        thumbnail = await createFallbackThumbnail('FILE');
       }
 
-      filesToUpload.value.push({
-        file,
-        name: file.name,
-        progress: 0,
-        statusClass: 'waiting',
-        statusText: '⏳ Ожидает',
-        thumbnail,
-      });
+      // Обновляем превью для конкретного файла
+      const fileIndex = filesToUpload.value.findIndex(f => f.file === file);
+      if (fileIndex !== -1) {
+        filesToUpload.value[fileIndex].thumbnail = thumbnail;
+      }
+
     } catch (err) {
       log(`❌ Критическая ошибка при обработке файла "${file.name}": ${err}`);
     }
@@ -186,171 +196,222 @@ const handleFileChange = async (event: Event) => {
   target.value = '';
 };
 
+// === Определение типа файла ===
 const isImageFile = (file: File): boolean => {
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif'];
-  const fileName = file.name.toLowerCase();
-  return imageExtensions.some(ext => fileName.endsWith(ext));
+  const ext = file.name.toLowerCase();
+  return ['.jpg','.jpeg','.png','.gif','.bmp','.webp','.heic','.heif'].some(e => ext.endsWith(e));
 };
 
-const isHEICFile = (file: File): boolean => {
-  const fileName = file.name.toLowerCase();
-  return fileName.endsWith('.heic') || fileName.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
-};
+const isHEICFile = (file: File): boolean =>
+  file.name.toLowerCase().endsWith('.heic') ||
+  file.name.toLowerCase().endsWith('.heif') ||
+  file.type.includes('heic') ||
+  file.type.includes('heif');
 
-// try native createImageBitmap (works in some browsers for HEIC), fallback to DataURL->Image canvas approach
-const createImageThumbnailHEIC = async (file: File): Promise<string> => {
-  // Попробуем createImageBitmap (может работать в iOS Safari)
-  try {
-    if (('createImageBitmap' in window)) {
-      const bitmap = await (window as any).createImageBitmap(file);
-      const maxSize = 200;
-      let width = bitmap.width;
-      let height = bitmap.height;
-      if (width > height) {
-        if (width > maxSize) {
+// === Превью для обычных изображений ===
+const createImageThumbnail = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSize = 200;
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
           height = Math.round((height * maxSize) / width);
           width = maxSize;
-        }
-      } else {
-        if (height > maxSize) {
+        } else if (height > maxSize) {
           width = Math.round((width * maxSize) / height);
           height = maxSize;
         }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Нет context 2d');
-      ctx.drawImage(bitmap, 0, 0, width, height);
-      return canvas.toDataURL('image/jpeg', 0.7);
-    }
-  } catch (e) {
-    console.warn('createImageBitmap для HEIC не сработал:', e);
-  }
-
-  // fallback: попробовать прочитать как DataURL (если браузер может декодировать)
-  return createImageThumbnail(file);
-};
-
-const createImageThumbnail = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      const img = new Image();
-
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const maxSize = 200;
-          let { width, height } = img;
-
-          if (width > height) {
-            if (width > maxSize) {
-              height = (height * maxSize) / width;
-              width = maxSize;
-            }
-          } else {
-            if (height > maxSize) {
-              width = (width * maxSize) / height;
-              height = maxSize;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            throw new Error('Не удалось получить контекст canvas');
-          }
-
-          // белый фон на случай прозрачности
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
-        } catch (error) {
-          reject(error);
-        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject('Canvas ctx error');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
-
-      img.onerror = () => reject(new Error('Ошибка загрузки изображения для превью'));
+      img.onerror = () => reject('Image load error');
       img.src = e.target?.result as string;
     };
-
-    reader.onerror = () => reject(new Error('Ошибка чтения файла'));
+    reader.onerror = () => reject('File read error');
     reader.readAsDataURL(file);
   });
+
+// === Превью для HEIC/HEIF с использованием heic2any ===
+const createImageThumbnailHEIC = async (file: File): Promise<string> => {
+  try {
+    // Конвертируем HEIC/HEIF в JPEG используя heic2any
+    const conversionResult = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.8, // Качество JPEG (0.0 - 1.0)
+    });
+
+    // heic2any возвращает Blob или массив Blob
+    let jpegBlob: Blob;
+    if (Array.isArray(conversionResult)) {
+      jpegBlob = conversionResult[0]; // Берем первый Blob если вернулся массив
+    } else {
+      jpegBlob = conversionResult;
+    }
+
+    // Создаем File из Blob для единообразия
+    const jpegFile = new File([jpegBlob], file.name.replace(/\.heic?$/i, '.jpg'), {
+      type: 'image/jpeg',
+      lastModified: file.lastModified
+    });
+
+    // Используем стандартную функцию создания превью для JPEG
+    return await createImageThumbnail(jpegFile);
+
+  } catch (conversionError) {
+    log(`⚠️ Ошибка конвертации HEIC в JPEG: ${conversionError}`);
+    
+    // Fallback 1: Пробуем createImageBitmap если конвертация не удалась
+    try {
+      if ('createImageBitmap' in window) {
+        const bitmap = await createImageBitmap(file);
+        const maxSize = 200;
+        let { width, height } = bitmap;
+        if (width > height && width > maxSize) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('No canvas context for HEIC fallback');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+        return canvas.toDataURL('image/jpeg', 0.7);
+      }
+    } catch (bitmapError) {
+      log(`⚠️ createImageBitmap fallback также не удался: ${bitmapError}`);
+    }
+
+    // Fallback 2: Пробуем как обычное изображение (может сработать в некоторых браузерах)
+    try {
+      return await createImageThumbnail(file);
+    } catch (standardError) {
+      log(`⚠️ Стандартное создание превью также не удалось: ${standardError}`);
+    }
+
+    // Final Fallback: Возвращаем красивую иконку HEIC
+    return createFallbackThumbnail('HEIC');
+  }
 };
 
-const createVideoThumbnail = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
+// === Превью для видео ===
+const createVideoThumbnail = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
     const video = document.createElement('video');
-    video.preload = 'metadata';
+    const url = URL.createObjectURL(file);
+    
+    video.src = url;
     video.muted = true;
+    video.playsInline = true;
+    
+    let loaded = false;
+    let seeked = false;
 
-    let resolved = false;
     const cleanup = () => {
-      URL.revokeObjectURL(video.src);
-      video.removeEventListener('loadedmetadata', onLoadedMetadata);
-      video.removeEventListener('seeked', onSeeked);
-      video.removeEventListener('error', onError);
+      URL.revokeObjectURL(url);
+      video.remove();
     };
 
-    const onLoadedMetadata = () => {
-      try {
-        // выбираем время кадра: 0.5s или 1/4 продолжительности
-        const t = Math.min(0.5, (video.duration || 0.5) / 4);
-        video.currentTime = t;
-      } catch (e) {
-        // safari может кидать
-        onSeeked();
-      }
-    };
-
-    const onSeeked = () => {
-      if (resolved) return;
+    const onSuccess = () => {
+      if (!loaded || !seeked) return;
+      
       try {
         const canvas = document.createElement('canvas');
-        const w = video.videoWidth || 320;
-        const h = video.videoHeight || 180;
-        canvas.width = Math.min(w, 800);
-        canvas.height = Math.min(h, 800);
         const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Нет context 2d для видео');
+        if (!ctx) throw new Error('No canvas context');
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        resolved = true;
-        cleanup();
-        resolve(dataUrl);
+        
+        // Масштабируем если нужно
+        const maxSize = 200;
+        if (canvas.width > maxSize || canvas.height > maxSize) {
+          const scaledCanvas = document.createElement('canvas');
+          const scaledCtx = scaledCanvas.getContext('2d');
+          if (!scaledCtx) throw new Error('No scaled canvas context');
+          
+          let { width, height } = canvas;
+          if (width > height && width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          } else if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+          
+          scaledCanvas.width = width;
+          scaledCanvas.height = height;
+          scaledCtx.drawImage(canvas, 0, 0, width, height);
+          resolve(scaledCanvas.toDataURL('image/jpeg', 0.7));
+        } else {
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        }
       } catch (err) {
-        cleanup();
         reject(err);
+      } finally {
+        cleanup();
       }
     };
 
-    const onError = () => {
+    video.onloadeddata = () => {
+      loaded = true;
+      // Пытаемся перемотать к началу видео
+      video.currentTime = Math.min(0.1, video.duration * 0.1);
+    };
+
+    video.onseeked = () => {
+      seeked = true;
+      onSuccess();
+    };
+
+    video.onerror = () => {
       cleanup();
-      if (!resolved) {
-        reject(new Error('Ошибка при создании превью видео'));
-      }
+      reject(new Error('Video error'));
     };
 
-    video.addEventListener('loadedmetadata', onLoadedMetadata);
-    video.addEventListener('seeked', onSeeked);
-    video.addEventListener('error', onError);
-
-    video.src = URL.createObjectURL(file);
-
-    // safety timeout: если кадр не получен за 3 с — откл.
+    // Таймаут на случай если видео не загрузится
     setTimeout(() => {
-      if (!resolved) {
-        try { onSeeked(); } catch(e) { /* ignore */ }
+      if (!loaded || !seeked) {
+        cleanup();
+        reject(new Error('Video load timeout'));
       }
-    }, 3500);
+    }, 10000);
   });
+
+// === Fallback превью ===
+const createFallbackThumbnail = (type: 'IMAGE' | 'VIDEO' | 'HEIC' | 'FILE'): string => {
+  const text = type === 'VIDEO' ? 'VIDEO' : 
+               type === 'HEIC' ? 'HEIC' : 
+               type === 'IMAGE' ? 'IMG' : 'FILE';
+  
+  const color = type === 'VIDEO' ? '#ff6b6b' : 
+                type === 'HEIC' ? '#4ecdc4' : 
+                type === 'IMAGE' ? '#45b7d1' : '#96ceb4';
+  
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+      <rect width="100%" height="100%" fill="${color}" opacity="0.2"/>
+      <rect x="10" y="10" width="180" height="180" fill="none" stroke="${color}" stroke-width="2"/>
+      <text x="50%" y="50%" font-size="24" text-anchor="middle" fill="${color}" dy=".3em" font-family="Arial, sans-serif">${text}</text>
+    </svg>
+  `;
+  
+  return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
 };
 
 // Получаем upload href от сервера (сервер создаёт папку при необходимости)
@@ -371,7 +432,7 @@ async function getUploadHref(filename: string): Promise<{ href: string; path: st
   return data; // { href, path, savedAs }
 }
 
-// Загрузка файлов — параллельно или последовательно (здесь последовательная, чтобы не создавать много одновременных XHR)
+// Загрузка файлов
 const startUpload = async () => {
   if (!isAuthorized.value) {
     log('⚠️ Не авторизованы');
@@ -405,7 +466,6 @@ function uploadDirectToYandex(href: string, uploadFile: UploadFile): Promise<voi
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', href, true);
-    xhr.responseType = 'json';
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
@@ -430,7 +490,7 @@ function uploadDirectToYandex(href: string, uploadFile: UploadFile): Promise<voi
   });
 }
 
-// check queues (оставил как было)
+// check queues
 const checkQueues = async () => {
   try {
     const res = await fetch("/api/get-queues", { method: 'GET' });
@@ -464,7 +524,7 @@ button:hover { background: #357abd; }
 button:disabled { background: #ccc; cursor: not-allowed; }
 #preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; margin-top: 10px; }
 .thumb { display: flex; flex-direction: column; align-items: center; border: 1px solid #ccc; border-radius: 8px; padding: 10px; background: white; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-.thumb img { width: 180px; height: auto; border-radius: 6px; margin-bottom: 8px; }
+.thumb img { width: 180px; height: 180px; object-fit: contain; border-radius: 6px; margin-bottom: 8px; background: #f5f5f5; }
 .icon-placeholder { font-size: 50px; height: 150px; display: flex; align-items: center; justify-content: center; }
 .file-info { font-size: 0.85rem; text-align: center; margin-bottom: 6px; word-break: break-word; }
 .progress-container { width: 100%; background: #eee; border-radius: 6px; overflow: hidden; height: 8px; margin-bottom: 6px; }

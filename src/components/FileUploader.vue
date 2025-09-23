@@ -1,134 +1,115 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from "vue"
+import heic2any from "heic2any"
 
-const fileInput = ref<HTMLInputElement | null>(null)
-const isUploading = ref(false)
-const uploadProgress = ref(0)
+const previews = ref<{ url: string; type: string; name: string }[]>([])
 
-async function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  if (!input.files?.length) return
+function getMimeType(file: File) {
+  if (file.type) return file.type
+  const ext = file.name.split(".").pop()?.toLowerCase()
+  if (!ext) return "application/octet-stream"
 
-  const file = input.files[0]
-  let uploadFile: File
-
-  if (file.type.startsWith('image/')) {
-    // 🔹 Конвертируем картинку в JPEG через Canvas
-    uploadFile = await convertImageToJpeg(file)
-  } else if (file.type.startsWith('video/')) {
-    // 🔹 Видео оставляем как есть
-    uploadFile = file
-  } else {
-    console.warn('Unsupported file type:', file.type)
-    return
+  switch (ext) {
+    case "heic":
+      return "image/heic"
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg"
+    case "png":
+      return "image/png"
+    case "gif":
+      return "image/gif"
+    case "webp":
+      return "image/webp"
+    case "mp4":
+    case "mov":
+    case "avi":
+    case "mkv":
+      return "video/mp4"
+    default:
+      return "application/octet-stream"
   }
-
-  await uploadToYandex(uploadFile)
 }
 
-// Конвертация изображения в JPEG через Canvas
-async function convertImageToJpeg(file: File): Promise<File> {
-  return new Promise<File>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      const img = new Image()
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.width
-        canvas.height = img.height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return reject(new Error('Canvas context not available'))
+async function createPreview(file: File): Promise<string> {
+  const mime = getMimeType(file)
 
-        ctx.drawImage(img, 0, 0)
+  if (mime.startsWith("image/") && mime !== "image/heic") {
+    return URL.createObjectURL(file)
+  }
 
-        canvas.toBlob(
-          blob => {
-            if (!blob) return reject(new Error('Failed to convert image'))
-            const newFile = new File([blob], getFileNameWithoutExt(file.name) + '.jpg', {
-              type: 'image/jpeg',
-              lastModified: Date.now()
-            })
-            resolve(newFile)
-          },
-          'image/jpeg',
-          0.9 // качество JPEG
-        )
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
+  if (mime === "image/heic") {
+    const blob = (await heic2any({ blob: file, toType: "image/jpeg" })) as Blob
+    return URL.createObjectURL(blob)
+  }
+
+  if (mime.startsWith("video/")) {
+    return await getVideoThumbnail(file)
+  }
+
+  return ""
+}
+
+function getVideoThumbnail(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video")
+    video.preload = "metadata"
+    video.src = URL.createObjectURL(file)
+    video.muted = true
+    video.playsInline = true
+
+    video.onloadeddata = () => {
+      video.currentTime = 0.1
     }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
+
+    video.onseeked = () => {
+      const canvas = document.createElement("canvas")
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext("2d")
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL("image/jpeg"))
+      } else {
+        resolve("")
+      }
+      URL.revokeObjectURL(video.src)
+    }
   })
 }
 
-// Получение ссылки от Яндекс.Диска и загрузка
-async function uploadToYandex(file: File) {
-  try {
-    isUploading.value = true
-    uploadProgress.value = 0
+async function handleFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files) return
 
-    // ⚡️ Запрос на получение ссылки
-    const urlRes = await fetch(`/api/get-upload-url?path=${encodeURIComponent(file.name)}`, {
-      method: 'GET'
-    })
-
-    if (!urlRes.ok) {
-      const errText = await urlRes.text()
-      throw new Error('Failed to get upload URL: ' + errText)
-    }
-
-    const { href } = await urlRes.json()
-
-    // ⚡️ Загружаем файл PUT-запросом
-    const xhr = new XMLHttpRequest()
-    xhr.open('PUT', href, true)
-
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable) {
-        uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-      }
-    }
-
-    xhr.onload = () => {
-      isUploading.value = false
-      if (xhr.status >= 200 && xhr.status < 300) {
-        console.log('Upload success:', file.name)
-      } else {
-        console.error('Upload failed:', xhr.responseText)
-      }
-    }
-
-    xhr.onerror = () => {
-      isUploading.value = false
-      console.error('Upload error')
-    }
-
-    xhr.send(file)
-  } catch (err) {
-    isUploading.value = false
-    console.error(err)
+  previews.value = []
+  for (const file of input.files) {
+    const url = await createPreview(file)
+    previews.value.push({ url, type: getMimeType(file), name: file.name })
   }
-}
-
-// Вспомогательная функция: имя файла без расширения
-function getFileNameWithoutExt(name: string): string {
-  const dotIndex = name.lastIndexOf('.')
-  return dotIndex !== -1 ? name.substring(0, dotIndex) : name
 }
 </script>
 
 <template>
   <div>
-    <input
-      type="file"
-      ref="fileInput"
-      @change="onFileChange"
-      accept="image/*,video/*"
-    />
-
-    <div v-if="isUploading">
-      Загрузка: {{ uploadProgress }}%
+    <input type="file" multiple @change="handleFiles" />
+    <div class="grid grid-cols-3 gap-2 mt-4">
+      <div
+        v-for="p in previews"
+        :key="p.name"
+        class="border rounded p-2 flex flex-col items-center"
+      >
+        <template v-if="p.type.startsWith('image/')">
+          <img :src="p.url" class="w-32 h-32 object-cover" />
+        </template>
+        <template v-else-if="p.type.startsWith('video/')">
+          <img :src="p.url" class="w-32 h-32 object-cover" />
+          <span class="text-xs mt-1">🎬 {{ p.name }}</span>
+        </template>
+        <template v-else>
+          <span class="text-xs">📄 {{ p.name }}</span>
+        </template>
+      </div>
     </div>
   </div>
 </template>
