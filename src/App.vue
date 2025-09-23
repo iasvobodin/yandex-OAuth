@@ -201,7 +201,7 @@ const handleFileChange = async (event: Event) => {
     try {
       // Проверяем HEIC / HEIF
       if (await isReallyHeic(file)) {
-        log(`⚠ Подозрение на подставной HEIC: "${file.name}", тип: ${file.type}`);
+        log(`⚠ Подозрение на HEIC: "${file.name}"`);
         try {
           const jpegBlob = await heicTo({
             blob: file,
@@ -212,7 +212,7 @@ const handleFileChange = async (event: Event) => {
             fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
               type: "image/jpeg",
             });
-            log(`✅ Файл "${file.name}" конвертирован в JPEG: "${fileToUpload.name}"`);
+            log(`✅ Конвертирован в JPEG: "${fileToUpload.name}"`);
           } else {
             log(`❌ heic-to вернул null для "${file.name}", оставляем оригинал`);
           }
@@ -223,7 +223,7 @@ const handleFileChange = async (event: Event) => {
 
       // Создаём превью
       if (fileToUpload.type.startsWith("image/")) {
-        thumbnail = URL.createObjectURL(fileToUpload);
+        thumbnail = URL.createObjectURL(fileToUpload); // только для превью
       } else if (fileToUpload.type.startsWith("video/")) {
         try {
           thumbnail = await createVideoThumbnail(fileToUpload);
@@ -232,7 +232,6 @@ const handleFileChange = async (event: Event) => {
         }
       }
 
-      // Добавляем в очередь на загрузку
       filesToUpload.value.push({
         file: fileToUpload,
         name: fileToUpload.name,
@@ -289,54 +288,37 @@ const uploadFiles = async (): Promise<void> => {
 
   log("Начинаем загрузку...");
   for (const fileItem of filesToUpload.value) {
-    let file = fileItem.file;
-
-    // Проверяем HEIC и конвертируем при необходимости
-    if (await isReallyHeic(file)) {
-      try {
-        const jpegBlob = await heicTo({
-          blob: file,
-          type: "image/jpeg",
-          quality: 0.9
-        });
-        if (jpegBlob) {
-          file = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
-            type: "image/jpeg",
-          });
-        }
-      } catch (err) {
-        log(`Ошибка конвертации HEIC "${file.name}": ${err}`);
-      }
-    }
-
     try {
       fileItem.statusClass = "uploading";
       fileItem.statusText = "⬆ Загрузка...";
       fileItem.progress = 0;
 
+      const file = fileItem.file;
+      const fileForUpload = new File([file], file.name, { type: file.type }); // клонируем, чтобы не было body used already
+
+      // Получаем ссылку на upload
       const getUrlRes = await fetch(GET_UPLOAD_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileType: file.type,
           fileName: file.name,
+          fileType: file.type,
           folder: folderName,
           subfolder: subfolderName,
         }),
       });
 
-      log(`${file.type},${file.name}`);
       if (!getUrlRes.ok) {
-        const errorData = await getUrlRes.json();
-        throw new Error(errorData.error);
+        const errorText = await getUrlRes.text();
+        throw new Error(`Failed to get upload URL: ${getUrlRes.status} ${errorText}`);
       }
 
       const { uploadUrl, newFileName } = (await getUrlRes.json()) as {
         uploadUrl: string;
         newFileName: string;
       };
+
+      log(`🔗 Upload URL для "${file.name}": ${uploadUrl}`);
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -347,24 +329,20 @@ const uploadFiles = async (): Promise<void> => {
           }
         };
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`Ошибка загрузки: ${xhr.status}`));
-          }
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`Ошибка загрузки: ${xhr.status}`));
         };
         xhr.onerror = () => reject(new Error("Сетевая ошибка"));
-        xhr.send(file);
+        xhr.send(fileForUpload);
       });
 
-      log(
-        `Файл "${file.name}" сохранён как "${newFileName}" в "${folderName}".`
-      );
+      log(`✅ Файл "${file.name}" загружен как "${newFileName}"`);
       fileItem.statusClass = "success";
       fileItem.statusText = "✅ Загружено";
       fileItem.progress = 100;
+
     } catch (err: any) {
-      log(`Ошибка при загрузке "${file.name}": ${err.message}`);
+      log(`❌ Ошибка при загрузке "${fileItem.name}": ${err.message}`);
       fileItem.statusClass = "error";
       fileItem.statusText = "❌ Ошибка";
       fileItem.progress = 100;
