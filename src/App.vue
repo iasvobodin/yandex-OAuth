@@ -179,11 +179,11 @@ const handleFileChange = async (event: Event) => {
     log(`${file.type}, ${file.name}`);
     let thumbnail: string | null = null;
 
-    const lowerName = file.name.toLowerCase();
-    const isHeicFile = lowerName.endsWith(".heic");
+    // const lowerName = file.name.toLowerCase();
+    // const isHeicFile = lowerName.endsWith(".heic");
 
     try {
-      if (isHeicFile && await isHeic(file)) {
+      if (await isHeic(file)) {
         // Конвертируем HEIC в JPEG
         try {
           const blob = await heicTo({
