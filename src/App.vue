@@ -58,7 +58,7 @@ import { ref, onMounted } from "vue";
 import type { Ref } from "vue";
 // import heic2any from "heic2any";
 // @ts-ignore
-import libheif from "libheif-js/wasm-bundle"; 
+import libheif from "libheif-js/wasm-bundle";
 
 const AUTH_URL = "/api/auth";
 const GET_UPLOAD_URL = "/api/get-upload-url";
@@ -166,6 +166,55 @@ const selectFiles = (): void => {
   }
 };
 
+// src/utils/heicToJpeg.ts
+// @ts-ignore — если нет типов
+import initLibHeif from "libheif-js/wasm-bundle";
+
+export async function heicToJpeg(file: File): Promise<Blob | null> {
+  try {
+    const libheif = await initLibHeif(); // Инициализация WASM
+    console.log("libheif инициализирован", libheif);
+
+    const buffer = await file.arrayBuffer();
+    const data = new Uint8Array(buffer);
+
+    const context = new libheif.HeifContext(data);
+    console.log("context", context);
+
+    const handle = context.getPrimaryImageHandle();
+    console.log("handle", handle);
+
+    const decoder = libheif.ImageDecoder("jpeg", handle);
+    const decoded = decoder.decode();
+    console.log("decoded", decoded);
+
+    // Получаем RGBA данные
+    const img = decoded.get_image();
+    const width = img.get_width();
+    const height = img.get_height();
+    const rgba = img.get_plane(0); // Uint8Array с RGBA
+
+    // Рисуем на canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D context not available");
+
+    const imageData = ctx.createImageData(width, height);
+    imageData.data.set(rgba);
+    ctx.putImageData(imageData, 0, 0);
+
+    return await new Promise<Blob>((resolve) =>
+      canvas.toBlob((blob) => resolve(blob!), "image/jpeg", 0.9)
+    );
+  } catch (err) {
+    console.error("Ошибка конвертации HEIC → JPEG:", err);
+    return null;
+  }
+}
+
 // попытаемся импортировать wasm-бандл
 
 const handleFileChange = async (event: Event) => {
@@ -183,38 +232,16 @@ const handleFileChange = async (event: Event) => {
     try {
       if (isImage) {
         if (isHeic) {
-          try {
-            const buffer = await file.arrayBuffer();
-            const decoder = new libheif.HeifDecoder();
-            const images = decoder.decode(buffer);
-            if (!images || images.length === 0) {
-              throw new Error("libheif-js: нет изображений после декодирования");
-            }
-            const img = images[0];
-            const width = img.get_width();
-            const height = img.get_height();
-            const rgba = img.data; // или как он предоставляет данные
-
-            // Canvas
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) throw new Error("Canvas context is null");
-            const imageData = new ImageData(new Uint8ClampedArray(rgba), width, height);
-            ctx.putImageData(imageData, 0, 0);
-
-            thumbnail = canvas.toDataURL("image/jpeg", 0.9);
-          } catch (error) {
-            log(`Ошибка декодирования HEIC libheif-js для "${file.name}": ${error}`);
-            // fallback
-            thumbnail = URL.createObjectURL(file);
+          const jpegBlob = await heicToJpeg(file);
+          if (jpegBlob) {
+            const previewUrl = URL.createObjectURL(jpegBlob);
+            console.log("Превью готово:", previewUrl);
           }
         } else {
           thumbnail = URL.createObjectURL(file);
         }
       } else if (isVideo) {
-        thumbnail = await createVideoThumbnail(file).catch(e => {
+        thumbnail = await createVideoThumbnail(file).catch((e) => {
           log(`Ошибка создания превью видео "${file.name}": ${e}`);
           return null;
         });
@@ -233,7 +260,6 @@ const handleFileChange = async (event: Event) => {
     });
   }
 };
-
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
