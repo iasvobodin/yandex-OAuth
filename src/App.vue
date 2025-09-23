@@ -42,12 +42,14 @@
 
     <pre id="output">{{ outputLog }}</pre>
   </div>
+<UploadComponent/>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Ref } from 'vue';
 import heic2any from 'heic2any';
+import UploadComponent from './components/UploadComponent.vue';
 
 interface UploadFile {
   file: File;
@@ -248,7 +250,7 @@ const createImageThumbnailHEIC = async (file: File): Promise<string> => {
     const conversionResult = await heic2any({
       blob: file,
       toType: 'image/jpeg',
-      quality: 0.8, // Качество JPEG (0.0 - 1.0)
+      quality: 1, // Качество JPEG (0.0 - 1.0)
     });
 
     // heic2any возвращает Blob или массив Blob
@@ -269,7 +271,7 @@ const createImageThumbnailHEIC = async (file: File): Promise<string> => {
     return await createImageThumbnail(jpegFile);
 
   } catch (conversionError) {
-    log(`⚠️ Ошибка конвертации HEIC в JPEG: ${conversionError}`);
+ log(`⚠️ Ошибка конвертации HEIC в JPEG: ${JSON.stringify(conversionError, null, 2)}`);
     
     // Fallback 1: Пробуем createImageBitmap если конвертация не удалась
     try {
@@ -372,16 +374,29 @@ const createVideoThumbnail = (file: File): Promise<string> => {
       reject(new Error(error));
     };
 
-    video.addEventListener('loadeddata', () => {
-      try {
-        // Устанавливаем время для захвата кадра (первые 2 секунды или 10% длительности)
-        const seekTime = Math.min(2, video.duration * 0.1);
-        video.currentTime = seekTime;
-      } catch (err) {
-        // Если не можем установить время, пробуем с текущего положения
-        video.currentTime = 0.1;
+video.addEventListener('loadeddata', async () => {
+  const seekTimes = [0.1, 0.5, 1.5, 3];
+  for (const seekTime of seekTimes) {
+    try {
+      video.currentTime = seekTime;
+      await new Promise((res) => video.addEventListener('seeked', res, { once: true }));
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('No canvas context');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, 1, 1).data;
+      if (imageData[3] !== 0) {
+        onSuccess(canvas);
+        return;
       }
-    });
+    } catch (err) {
+      log(`⚠️ Пропущен кадр на ${seekTime} сек: ${err}`);
+    }
+  }
+  onError('No valid video frame found');
+});
 
     video.addEventListener('seeked', () => {
       try {
