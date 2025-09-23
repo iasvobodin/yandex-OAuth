@@ -43,6 +43,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Ref } from 'vue';
+import heic2any from 'heic2any';
 
 const AUTH_URL = '/api/auth';
 const GET_UPLOAD_URL = '/api/get-upload-url';
@@ -151,20 +152,40 @@ const selectFiles = (): void => {
   }
 };
 
+
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
+
   for (const file of files) {
-    log(`${file.type},${file.name}`)
+    log(`${file.type}, ${file.name}`);
+
     let thumbnail: string | null = null;
-    if (file.type.startsWith('image/')) {
-      thumbnail = URL.createObjectURL(file);
-    } else if (file.type.startsWith('video/')) {
-      try {
-        thumbnail = await createVideoThumbnail(file);
-      } catch (e) {
-        log(`Ошибка создания превью для видео "${file.name}"`);
+
+    try {
+      if (file.type.startsWith('image/')) {
+        // Проверяем, HEIC ли это
+        if (file.name.toLowerCase().endsWith('.heic')) {
+          // Конвертируем в JPEG
+         let blobOrArray = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.9,
+          });
+
+          // Если вернулся массив, берем первый Blob
+          const blob = Array.isArray(blobOrArray) ? blobOrArray[0] : blobOrArray;
+          thumbnail = URL.createObjectURL(blob);
+        }
+      } else if (file.type.startsWith('video/')) {
+        try {
+          thumbnail = await createVideoThumbnail(file);
+        } catch (e) {
+          log(`Ошибка создания превью для видео "${file.name}"`);
+        }
       }
+    } catch (err) {
+      log(`Ошибка обработки файла "${file.name}": ${err}`);
     }
 
     filesToUpload.value.push({
@@ -177,6 +198,7 @@ const handleFileChange = async (event: Event) => {
     });
   }
 };
+
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
