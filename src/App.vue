@@ -231,9 +231,11 @@ const handleFileChange = async (event: Event) => {
           log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
         }
       }
-
+      const newBlob = fileToUpload.slice(0, fileToUpload.size, fileToUpload.type);
+      const newFile = new File([newBlob], fileToUpload.name, { type: fileToUpload.type });
+      
       filesToUpload.value.push({
-        file: fileToUpload,
+        file: newFile,
         name: fileToUpload.name,
         progress: 0,
         statusClass: "waiting",
