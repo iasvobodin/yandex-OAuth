@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { buildClaimEmail } from "../utils/helpers";
+import { buildClaimEmail } from "../utils/helpers.ts";
 export default async function handler(req, res) {
     console.log("=== Tracker Webhook Triggered ===");
 

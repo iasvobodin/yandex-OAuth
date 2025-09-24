@@ -1,5 +1,5 @@
 // api/get-upload-url.js
-import { getCookie, getRandomSuffix } from '../utils/helpers.js';
+import { getCookie, getRandomSuffix } from '../utils/helpers.ts';
 
 // Функция для правильного кодирования пути для Яндекс.Диска
 function encodeYandexPath(pathSegments) {
