@@ -1,5 +1,4 @@
 // api/get-upload-url.js
-import fetch from 'node-fetch';
 import { getCookie, getRandomSuffix, getMimeTypeFromExtension } from '../utils/helpers.js';
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
@@ -32,25 +31,7 @@ export default async function handler(request, response) {
             });
         }
 
-        // // 2. Получаем ссылку для загрузки от Яндекса
-        // const ext = fileName.includes(".") ? fileName.substring(fileName.lastIndexOf(".")) : "";
-
-        // if (!ext && fileType) {
-        //     const mimeToExt = {
-        //         jpg: 'image/jpeg',
-        //         jpeg: 'image/jpeg',
-        //         png: 'image/png',
-        //         gif: 'image/gif',
-        //         webp: 'image/webp',
-        //         svg: 'image/svg+xml',
-        //         pdf: 'application/pdf',
-        //         txt: 'text/plain',
-        //         // Добавляем расширения HEIC и HEIF
-        //         heic: 'image/heic',
-        //         heif: 'image/heic'
-        //     };
-        //     ext = mimeToExt[file.type] || '';
-        // }
+        // 2. Получаем ссылку для загрузки от Яндекса
 
         const newFileName = `${subfolder}__${getRandomSuffix()}${fileName.slice(fileName.lastIndexOf('.'))}`;
 
@@ -61,12 +42,15 @@ export default async function handler(request, response) {
             headers: { Authorization: `OAuth ${accessToken}` }
         });
 
-        const uploadData = await uploadRes.json();
         if (!uploadRes.ok) {
+            // Если произошла ошибка, сначала читаем тело как текст, чтобы получить описание
             const errorText = await uploadRes.text();
             console.error('Yandex response:', uploadRes.status, errorText);
             throw new Error("Failed to get upload URL");
         }
+
+        // Если запрос успешен, читаем тело как JSON
+        const uploadData = await uploadRes.json();
         if (!uploadData.href) throw new Error("Failed to get upload URL");
 
         // Возвращаем клиенту подписанный URL и новое имя файла
