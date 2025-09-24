@@ -190,6 +190,26 @@ function replaceExtension(filename: string, newExt: string) {
   return idx >= 0 ? filename.slice(0, idx) + "." + newExt : filename + "." + newExt;
 }
 
+async function getFileFormat(file: File): Promise<string> {
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  const ascii = new TextDecoder().decode(header);
+  
+  // Проверяем на известные сигнатуры (магические числа)
+  if (ascii.includes("ftypheic") || ascii.includes("ftypheif") || ascii.includes("ftypheix")) {
+    return 'heic';
+  } else if (header[0] === 0xFF && header[1] === 0xD8) { // Проверка на JPEG
+    return 'jpeg';
+  } else if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) { // Проверка на PNG
+    return 'png';
+  } else if (header[0] === 0x47 && header[1] === 0x49 && header[2] === 0x46) { // Проверка на GIF
+    return 'gif';
+  } else if (ascii.includes("ftypmp4")) { // Проверка на MP4
+      return 'mp4';
+  }
+  
+  // Если не удалось определить по заголовку, возвращаем тип, который предоставил браузер
+  return file.type.split('/')[1] || 'unknown';
+}
 
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
@@ -203,7 +223,8 @@ const handleFileChange = async (event: Event) => {
 
       // Шаг 1: Создаем новый File-объект с гарантированным расширением
         let newFileName = file.name;
-        log(`ИМЯ ФАЙЛА ${newFileName}, ТИП ФАЙЛА ${file.type}`)
+        const ff = await getFileFormat(file)
+        log(`ИМЯ ФАЙЛА ${newFileName}, ТИП ФАЙЛА ${file.type}, ${ff}`)
         // Проверяем, есть ли точка в имени файла
         if (newFileName.lastIndexOf('.') === -1) {
             // Если расширения нет, добавляем его на основе MIME-типа
