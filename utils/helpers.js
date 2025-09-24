@@ -121,71 +121,71 @@ ${mailData.yourName} ${mailData.yourPosition} ${mailData.yourCompany}
 `;
 
   const bodyHtml = `
-  <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#000">
+<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#000">
 
   <!-- ENGLISH VERSION -->
-  <p>Dear <b>{{recipientName}}</b>,</p>
-  <p>This letter serves as a formal complaint regarding a discrepancy in the quality of the products we received on <b>{{invoiceNumber}}</b>.</p>
+  <p>Dear <b>${mailData.recipientName}</b>,</p>
+  <p>This letter serves as a formal complaint regarding a discrepancy in the quality of the products we received on <b>${mailData.invoiceNumber}</b>.</p>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Product Details</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Manufacturer Part Number</td><td style="padding:5px">{{manufacturerPartNumber}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Quantity</td><td style="padding:5px">{{quantity}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Serial Numbers</td><td style="padding:5px">{{serialNumbers}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Description</td><td style="padding:5px">{{description}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Part Number</td><td style="padding:5px">{{mpProductNumber}}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Manufacturer Part Number</td><td style="padding:5px">${mailData.manufacturerPartNumber}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Quantity</td><td style="padding:5px">${mailData.quantity}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Serial Numbers</td><td style="padding:5px">${mailData.serialNumbers}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Description</td><td style="padding:5px">${mailData.description}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Part Number</td><td style="padding:5px">${mailData.mpProductNumber}</td></tr>
   </table>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Description of Discrepancy</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Defect Description</td><td style="padding:5px">{{discrepancyDescription}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Additional Information</td><td style="padding:5px">The defect was identified during {{typeOfProduction}}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Defect Description</td><td style="padding:5px">${mailData.discrepancyDescription}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Additional Information</td><td style="padding:5px">The defect was identified during ${mailData.typeOfProduction}</td></tr>
   </table>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Proposed Actions</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Proposed Action 1</td><td style="padding:5px">{{proposedAction1}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Proposed Action 2</td><td style="padding:5px">{{proposedAction2}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Response Timeframe</td><td style="padding:5px">{{responseTimeframe}} business days</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Proposed Action 1</td><td style="padding:5px">${mailData.proposedAction1}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Proposed Action 2</td><td style="padding:5px">${mailData.proposedAction2}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Response Timeframe</td><td style="padding:5px">${mailData.responseTimeframe} business days</td></tr>
   </table>
 
-  <p><b>Attachments:</b> {{attachments}}</p>
+  <p><b>Attachments:</b> ${mailData.attachments}</p>
   <p>We look forward to your prompt response.</p>
-  <p>Sincerely,<br>{{yourName}}<br>{{yourPosition}}<br>{{yourCompany}}</p>
+  <p>Sincerely,<br>${mailData.yourName}<br>${mailData.yourPosition}<br>${mailData.yourCompany}</p>
 
   <hr style="margin:20px 0;border:none;border-top:1px solid #ccc">
 
   <!-- RUSSIAN VERSION -->
-  <p><b>Уважаемый(-ая) {{recipientName}},</b></p>
-  <p>Настоящим письмом мы официально предъявляем претензию относительно несоответствия качества продукции, которую мы получили <b>{{invoiceNumber}}</b>.</p>
+  <p><b>Уважаемый(-ая) ${mailData.recipientName},</b></p>
+  <p>Настоящим письмом мы официально предъявляем претензию относительно несоответствия качества продукции, которую мы получили <b>${mailData.invoiceNumber}</b>.</p>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Детали продукции</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Партномер производителя</td><td style="padding:5px">{{manufacturerPartNumber}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Количество</td><td style="padding:5px">{{quantity}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Серийные номера</td><td style="padding:5px">{{serialNumbers}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Описание</td><td style="padding:5px">{{description}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Артикул</td><td style="padding:5px">{{mpProductNumber}}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Партномер производителя</td><td style="padding:5px">${mailData.manufacturerPartNumber}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Количество</td><td style="padding:5px">${mailData.quantity}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Серийные номера</td><td style="padding:5px">${mailData.serialNumbers}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Описание</td><td style="padding:5px">${mailData.description}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Артикул</td><td style="padding:5px">${mailData.mpProductNumber}</td></tr>
   </table>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Описание несоответствия</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Описание дефекта</td><td style="padding:5px">{{discrepancyDescription}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Дополнительная информация</td><td style="padding:5px">Дефект был обнаружен во время {{typeOfProduction}}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Описание дефекта</td><td style="padding:5px">${mailData.discrepancyDescription}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Дополнительная информация</td><td style="padding:5px">Дефект был обнаружен во время ${mailData.typeOfProduction}</td></tr>
   </table>
 
   <h3 style="border-bottom:1px solid #ccc;padding-bottom:3px">Предлагаемые действия</h3>
   <table style="border-collapse:collapse;width:100%;margin-bottom:15px">
-    <tr><td style="padding:5px;font-weight:bold">Предлагаемое действие 1</td><td style="padding:5px">{{proposedAction1}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Предлагаемое действие 2</td><td style="padding:5px">{{proposedAction2}}</td></tr>
-    <tr><td style="padding:5px;font-weight:bold">Срок ответа</td><td style="padding:5px">{{responseTimeframe}} рабочих дней</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Предлагаемое действие 1</td><td style="padding:5px">${mailData.proposedAction1}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Предлагаемое действие 2</td><td style="padding:5px">${mailData.proposedAction2}</td></tr>
+    <tr><td style="padding:5px;font-weight:bold">Срок ответа</td><td style="padding:5px">${mailData.responseTimeframe} рабочих дней</td></tr>
   </table>
 
-  <p><b>Приложения:</b> {{attachments}}</p>
+  <p><b>Приложения:</b> ${mailData.attachments}</p>
   <p>Мы ждем вашего скорейшего ответа.</p>
-  <p>С уважением,<br>{{yourName}}<br>{{yourPosition}}<br>{{yourCompany}}</p>
+  <p>С уважением,<br>${mailData.yourName}<br>${mailData.yourPosition}<br>${mailData.yourCompany}</p>
 </div>
-`;
+`
 
   return { to: mailData.supplierEmail, subject, bodyText, bodyHtml };
 }
