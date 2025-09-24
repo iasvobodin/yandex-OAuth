@@ -349,7 +349,7 @@ const createVideoThumbnail = (file: File): Promise<string> => {
         reject(new Error("Не удалось получить контекст canvas"));
       }
     };
-    video.onerror = (e) => {
+    video.onerror = () => {
       URL.revokeObjectURL(videoUrl); // Гарантированно освобождаем URL в случае ошибки
       reject(new Error("Ошибка создания превью видео."));
     };
