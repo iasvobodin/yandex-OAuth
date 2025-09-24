@@ -190,64 +190,6 @@ function replaceExtension(filename: string, newExt: string) {
   return idx >= 0 ? filename.slice(0, idx) + "." + newExt : filename + "." + newExt;
 }
 
-// const handleFileChange = async (event: Event) => {
-//   filesToUpload.value = [];
-//   const files = Array.from((event.target as HTMLInputElement).files || []);
-
-//   for (const file of files) {
-//     let fileToUpload: File = file;
-//     let thumbnail: string | null = null;
-
-//     try {
-//       // Проверяем HEIC / HEIF
-//       if (await isReallyHeic(file)) {
-//         log(`⚠ Подозрение на HEIC: "${file.name}"`);
-//         try {
-//           const jpegBlob = await heicTo({
-//             blob: file,
-//             type: "image/jpeg",
-//             quality: 0.9
-//           });
-//           if (jpegBlob) {
-//             fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
-//               type: "image/jpeg",
-//             });
-//             log(`✅ Конвертирован в JPEG: "${fileToUpload.name}"`);
-//           } else {
-//             log(`❌ heic-to вернул null для "${file.name}", оставляем оригинал`);
-//           }
-//         } catch (err) {
-//           log(`❌ Ошибка конвертации HEIC "${file.name}": ${err}`);
-//         }
-//       }
-
-//       // Создаём превью
-//       if (fileToUpload.type.startsWith("image/")) {
-//         thumbnail = URL.createObjectURL(fileToUpload); // только для превью
-//       } else if (fileToUpload.type.startsWith("video/")) {
-//         try {
-//           thumbnail = await createVideoThumbnail(fileToUpload);
-//         } catch (e) {
-//           log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
-//         }
-//       }
-//       const newBlob = fileToUpload.slice(0, fileToUpload.size, fileToUpload.type);
-//       const newFile = new File([newBlob], fileToUpload.name, { type: fileToUpload.type });
-
-//       filesToUpload.value.push({
-//         file: newFile,
-//         name: fileToUpload.name,
-//         progress: 0,
-//         statusClass: "waiting",
-//         statusText: "⏳ Ожидает",
-//         thumbnail,
-//       });
-
-//     } catch (err: any) {
-//       log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
-//     }
-//   }
-// };
 
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
@@ -260,12 +202,12 @@ const handleFileChange = async (event: Event) => {
 
 
       // Шаг 1: Создаем новый File-объект с гарантированным расширением
-        let newFileName = fileToUpload.name;
-        log(`ИМЯ ФАЙЛА ${newFileName}`)
+        let newFileName = file.name;
+        log(`ИМЯ ФАЙЛА ${newFileName}, ТИП ФАЙЛА ${file.type}`)
         // Проверяем, есть ли точка в имени файла
         if (newFileName.lastIndexOf('.') === -1) {
             // Если расширения нет, добавляем его на основе MIME-типа
-            log('нет разширения у файла')
+            log('нет раcширения у файла')
             if (file.type === "image/jpeg") {
                 newFileName = newFileName + '.jpeg';
             }
