@@ -358,7 +358,7 @@ const uploadFiles = async (): Promise<void> => {
           fileName: fileForUpload.name,
           fileType: fileForUpload.type,
           folder: folderName,
-          subfolder: subfolderName,
+          newNameForFile: subfolderName,
         }),
       });
 

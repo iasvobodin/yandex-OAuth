@@ -1,6 +1,14 @@
 // api/get-upload-url.js
 import { getCookie, getRandomSuffix } from '../utils/helpers.js';
 
+// Функция для правильного кодирования пути для Яндекс.Диска
+function encodeYandexPath(pathSegments) {
+    return pathSegments
+        .map(segment => segment.normalize('NFC'))
+        .map(segment => encodeURIComponent(segment))
+        .join('/');
+}
+
 export default async function handler(request, response) {
     if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method Not Allowed' });
@@ -12,60 +20,76 @@ export default async function handler(request, response) {
         return response.status(401).json({ error: 'Unauthorized: Access token not found in cookies.' });
     }
 
-    let { fileName, folder, subfolder } = request.body;
-    if (!fileName || !folder || !subfolder) {
-        console.error("❌ Не хватает параметров:", { fileName, folder, subfolder });
+    let { fileName, folder, newNameForFile } = request.body;
+    if (!fileName || !folder || !newNameForFile) {
+        console.error("❌ Не хватает параметров:", { fileName, folder, newNameForFile });
         return response.status(400).json({ error: 'Missing file or folder information.' });
     }
 
     try {
-        console.log("➡ Исходные данные:", { fileName, folder, subfolder });
+        console.log("➡ Исходные данные:", { fileName, folder, newNameForFile });
 
-        // нормализуем (важно для iPhone)
-        fileName = fileName.normalize('NFC');
-        folder = folder.normalize('NFC');
-        subfolder = subfolder.normalize('NFC');
+        // Нормализуем все строки для iPhone
+        fileName = fileName.normalize('NFC').trim();
+        folder = folder.normalize('NFC').trim();
+        newNameForFile = newNameForFile.normalize('NFC').trim();
 
-        console.log("🔧 После normalize:", { fileName, folder, subfolder });
+        console.log("🔧 После normalize:", { fileName, folder, newNameForFile });
 
-        // путь кодируем сегментами
+        // Создаем путь к базовой папке
         const baseFolderSegments = [
             'Системы ТАУ - Общее',
             'Фото ТАУ контроль',
             folder
         ];
-        const baseFolder = baseFolderSegments.map(s => encodeURIComponent(s)).join('/');
 
-        console.log("📂 baseFolder (кодированный):", baseFolder);
+        // 1. Создаем папки поэтапно (важно для iPhone!)
+        let currentPath = '';
+        for (let i = 0; i < baseFolderSegments.length; i++) {
+            const segment = baseFolderSegments[i];
+            currentPath += (currentPath ? '/' : '') + encodeURIComponent(segment.normalize('NFC'));
 
-        // 1. Проверяем папку
-        const checkFolderUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${baseFolder}`;
-        console.log("🔎 Проверяем папку:", checkFolderUrl);
+            const checkUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${currentPath}`;
+            console.log(`📁 Проверяем папку ${i + 1}/${baseFolderSegments.length}:`, segment);
 
-        const checkFolderRes = await fetch(checkFolderUrl, {
-            method: "GET",
-            headers: { Authorization: `OAuth ${accessToken}` }
-        });
-
-        if (checkFolderRes.status === 404) {
-            console.log("📁 Папка не найдена → создаём");
-            await fetch(checkFolderUrl, {
-                method: "PUT",
+            const checkRes = await fetch(checkUrl, {
+                method: "GET",
                 headers: { Authorization: `OAuth ${accessToken}` }
             });
+
+            if (checkRes.status === 404) {
+                console.log(`📁 Создаем папку: ${segment}`);
+                const createRes = await fetch(checkUrl, {
+                    method: "PUT",
+                    headers: { Authorization: `OAuth ${accessToken}` }
+                });
+
+                if (!createRes.ok) {
+                    const errorText = await createRes.text();
+                    console.error("❌ Ошибка создания папки:", createRes.status, errorText);
+                    throw new Error(`Failed to create folder: ${segment}`);
+                }
+
+                // Небольшая задержка для iOS
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
         }
 
-        // 2. Имя файла
+        const baseFolder = encodeYandexPath(baseFolderSegments);
+        console.log("📂 baseFolder (итоговый):", baseFolder);
+
+        // 2. Формируем имя файла
         const ext = fileName.includes(".")
             ? fileName.slice(fileName.lastIndexOf("."))
             : "";
-        const newFileName = `${subfolder}__${getRandomSuffix()}${ext}`;
-        const encodedFileName = encodeURIComponent(newFileName);
+        const newFileName = `${newNameForFile}__${getRandomSuffix()}${ext}`;
 
-        console.log("📝 Имя файла:", { original: fileName, newFileName, encodedFileName });
+        console.log("📝 Имя файла:", { original: fileName, newFileName });
 
-        // 3. Получаем upload URL
-        const uploadUrlReq = `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${baseFolder}/${encodedFileName}&overwrite=true`;
+        // 3. Получаем upload URL с правильно кодированным путем
+        const fullPath = `${baseFolder}/${encodeURIComponent(newFileName.normalize('NFC'))}`;
+        const uploadUrlReq = `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${fullPath}&overwrite=true`;
+
         console.log("🌍 Запрос upload URL:", uploadUrlReq);
 
         const uploadRes = await fetch(uploadUrlReq, {
@@ -76,6 +100,11 @@ export default async function handler(request, response) {
         if (!uploadRes.ok) {
             const errorText = await uploadRes.text();
             console.error("❌ Ошибка от Яндекса:", uploadRes.status, errorText);
+
+            // Дополнительная отладка для iPhone
+            console.error("🔍 Путь который не найден:", fullPath);
+            console.error("🔍 Декодированный путь:", decodeURIComponent(fullPath));
+
             throw new Error("Failed to get upload URL");
         }
 
