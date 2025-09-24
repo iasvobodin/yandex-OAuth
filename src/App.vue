@@ -260,7 +260,8 @@ const handleFileChange = async (event: Event) => {
 
 
       // Шаг 1: Создаем новый File-объект с гарантированным расширением
-        let newFileName = file.name;
+        let newFileName = fileToUpload.name;
+        log(`ИМЯ ФАЙЛА ${newFileName}`)
         // Проверяем, есть ли точка в имени файла
         if (newFileName.lastIndexOf('.') === -1) {
             // Если расширения нет, добавляем его на основе MIME-типа
