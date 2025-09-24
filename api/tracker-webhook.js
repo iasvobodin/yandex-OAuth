@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-
+import { buildClaimEmail } from "../utils/helpers";
 export default async function handler(req, res) {
     console.log("=== Tracker Webhook Triggered ===");
 
@@ -51,6 +51,12 @@ export default async function handler(req, res) {
         console.log("Issue summary:", issue.summary);
 
         // 4️⃣ Email поставщика
+
+        const { to, subject, bodyText, bodyHtml } = buildClaimEmail(issue);
+
+
+
+
         // Найти ключ, который оканчивается на '--supplierEmail'
         const emailKey = Object.keys(issue).find(k => k.endsWith('supplierEmail'));
         const supplierEmail = emailKey ? issue[emailKey] : 'iasvobodin@gmail.com';
@@ -103,7 +109,7 @@ export default async function handler(req, res) {
         console.log("Folder public URL:", folderUrl);
 
         // 8️⃣ Отправка письма
-        let bodyText = issue.description || "Нет описания";
+        // let bodyText = issue.description || "Нет описания";
         if (folderUrl) bodyText += `\n\nВсе файлы по задаче доступны здесь:\n${folderUrl}`;
 
         const transporter = nodemailer.createTransport({
@@ -113,12 +119,21 @@ export default async function handler(req, res) {
             auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS }
         });
 
+
         const mailOptions = {
             from: `"QC TAU" <${process.env.MAIL_USER}>`,
-            to: supplierEmail,
-            subject: `Re: ${issue.key}: ${issue.summary}`,
-            text: bodyText
+            to,
+            subject,
+            text: bodyText,
+            html: bodyHtml
         };
+
+        // const mailOptions = {
+        //     from: `"QC TAU" <${process.env.MAIL_USER}>`,
+        //     to: supplierEmail,
+        //     subject: `Re: ${issue.key}: ${issue.summary}`,
+        //     text: bodyText
+        // };
 
         const infoMail = await transporter.sendMail(mailOptions);
         console.log("Email sent:", infoMail.messageId);
