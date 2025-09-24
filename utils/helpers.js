@@ -1,9 +1,6 @@
-// utils/helpers.ts
+// utils/helpers.js
 
-export function getCookie(
-  cookieHeader: string | undefined,
-  name: string
-): string | null {
+export function getCookie(cookieHeader, name) {
   const cookies = cookieHeader?.split(";") || [];
   for (const cookie of cookies) {
     const [cookieName, cookieValue] = cookie.trim().split("=");
@@ -14,7 +11,7 @@ export function getCookie(
   return null;
 }
 
-export function getRandomSuffix(length: number = 3): string {
+export function getRandomSuffix(length = 3) {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
   for (let i = 0; i < length; i++) {
@@ -23,9 +20,9 @@ export function getRandomSuffix(length: number = 3): string {
   return result;
 }
 
-export function getMimeTypeFromExtension(filePath: string): string {
-  const extension = filePath.split(".").pop()?.toLowerCase() || "";
-  const mimeMap: Record<string, string> = {
+export function getMimeTypeFromExtension(filePath) {
+  const extension = (filePath.split(".").pop() || "").toLowerCase();
+  const mimeMap = {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
     png: "image/png",
@@ -36,12 +33,12 @@ export function getMimeTypeFromExtension(filePath: string): string {
     txt: "text/plain",
     // HEIC и HEIF
     heic: "image/heic",
-    heif: "image/heic",
+    heif: "image/heic"
   };
   return mimeMap[extension] || "application/octet-stream";
 }
 
-export function buildClaimEmail(issue: any) {
+export function buildClaimEmail(issue) {
   const defaults = {
     supplierEmail: "supplier@example.com",
     claimNumber: "CLAIM-12345",
@@ -60,20 +57,17 @@ export function buildClaimEmail(issue: any) {
     attachments: "test protocol, defect photos",
     yourName: "Ivan Svobodin",
     yourPosition: "QC Engineer",
-    yourCompany: "ООО Системы ТАУ",
+    yourCompany: "ООО Системы ТАУ"
   };
 
-  const mailData: Record<string, any> = {};
+  const mailData = {};
   for (const key of Object.keys(defaults)) {
-    const customKey = Object.keys(issue).find((k) => k.endsWith(key));
-    mailData[key] = customKey
-      ? issue[customKey]
-      : defaults[key as keyof typeof defaults];
+    const customKey = Object.keys(issue).find(k => k.endsWith(key));
+    mailData[key] = customKey ? issue[customKey] : defaults[key];
   }
 
   const subject = `Re: ${issue.key}: ${issue.summary}`;
 
-  // 📌 plain text
   const bodyText = `
 Dear ${mailData.recipientName},
 This letter serves as a formal complaint regarding a discrepancy in the quality of the products we received on ${mailData.invoiceNumber}. We have identified an issue with the following item(s) and require your immediate attention to resolve this matter.
@@ -126,7 +120,6 @@ ________________________________________
 ${mailData.yourName} ${mailData.yourPosition} ${mailData.yourCompany}
 `;
 
-  // 📌 html версия (с таблицами для читабельности)
   const bodyHtml = `
   <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.4">
     <p>Dear <b>${mailData.recipientName}</b>,</p>
