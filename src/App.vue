@@ -224,7 +224,7 @@ const handleFileChange = async (event: Event) => {
       // Шаг 1: Создаем новый File-объект с гарантированным расширением
         let newFileName = file.name;
         const ff = await getFileFormat(file)
-        log(`ИМЯ ФАЙЛА ${newFileName}, ТИП ФАЙЛА ${file.type}, ${ff}`)
+        log(`ИМЯ ФАЙЛА ${newFileName|| 'НЕТ'}, ТИП ФАЙЛА ${file.type|| 'НЕТ'}, ${ff}`)
         // Проверяем, есть ли точка в имени файла
         if (newFileName.lastIndexOf('.') === -1) {
             // Если расширения нет, добавляем его на основе MIME-типа
