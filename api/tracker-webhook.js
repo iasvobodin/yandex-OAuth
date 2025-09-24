@@ -110,7 +110,7 @@ export default async function handler(req, res) {
 
         // 8️⃣ Отправка письма
         // let bodyText = issue.description || "Нет описания";
-        if (folderUrl) bodyText += `\n\nВсе файлы по задаче доступны здесь:\n${folderUrl}`;
+        // if (folderUrl) bodyText += `\n\nВсе файлы по задаче доступны здесь:\n${folderUrl}`;
 
         const transporter = nodemailer.createTransport({
             host: "smtp.yandex.ru",
