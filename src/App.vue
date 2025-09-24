@@ -388,42 +388,24 @@ const uploadFiles = async (): Promise<void> => {
       });
 
       if (!getUrlRes.ok) {
-        try {
-          // Пытаемся получить JSON с детальной информацией об ошибке
-          const errorData = await getUrlRes.json();
-
-          if (errorData.errorCode === "NO_ACCESS_TO_MAIN_FOLDER") {
-            throw new Error(
-              "У вас нет доступа к корпоративной папке. Обратитесь к администратору."
-            );
-          } else if (errorData.errorCode === "MAIN_FOLDER_CHECK_FAILED") {
-            throw new Error(
-              "Не удается проверить доступ к папке. Попробуйте позже."
-            );
-          } else {
-            throw new Error(
-              errorData.error || `Ошибка сервера: ${getUrlRes.status}`
-            );
-          }
-        } catch (jsonError) {
-          // Если не удалось распарсить JSON, пытаемся получить текст
-          try {
-            const errorText = await getUrlRes.text();
-            throw new Error(
-              `Ошибка загрузки файла: ${getUrlRes.status} ${errorText}`
-            );
-          } catch (textError) {
-            throw new Error(`Ошибка загрузки файла: ${getUrlRes.status}`);
-          }
-        }
+        const errorText = await getUrlRes.text();
+        throw new Error(
+          `Failed to get upload URL: ${getUrlRes.status} ${errorText}`
+        );
       }
 
-      const { uploadUrl, newFileName } = (await getUrlRes.json()) as {
+      const { uploadUrl, newFileName, warning } = (await getUrlRes.json()) as {
         uploadUrl: string;
         newFileName: string;
+        warning?: string; // Добавляем опциональное поле warning
       };
 
-      log(`🔗 Upload URL для "${fileForUpload.name}": ${uploadUrl}`);
+      // Обработка предупреждения
+      if (warning) {
+        log(warning);
+      }
+
+      // log(`🔗 Upload URL для "${fileForUpload.name}": ${uploadUrl}`);
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();

@@ -37,47 +37,42 @@ export default async function handler(request, response) {
         console.log("🔧 После normalize:", { fileName, folder, newNameForFile });
 
         // Создаем путь к базовой папке
-        const baseFolderSegments = [
+        let baseFolderSegments = [
             'Системы ТАУ - Общее',
             'Фото ТАУ контроль',
             folder
         ];
 
-        // 1. Проверяем доступ к основной папке "Системы ТАУ - Общее"
-        const mainFolderPath = encodeURIComponent(baseFolderSegments[0].normalize('NFC'));
-        const mainFolderCheckUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${mainFolderPath}`;
+        // 1. Проверяем доступ к основной папке
+        let hasAccessToMainFolder = true;
+        let warningMessage = null;
 
-        console.log("🔐 Проверяем доступ к основной папке:", baseFolderSegments[0]);
+        const mainFolderPath = encodeURIComponent('Системы ТАУ - Общее');
+        const mainFolderUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${mainFolderPath}`;
 
-        const mainFolderRes = await fetch(mainFolderCheckUrl, {
+        console.log('🔐 Проверяем доступ к основной папке: Системы ТАУ - Общее');
+        const mainFolderCheck = await fetch(mainFolderUrl, {
             method: "GET",
             headers: { Authorization: `OAuth ${accessToken}` }
         });
 
-        if (mainFolderRes.status === 404) {
-            console.error("❌ Нет доступа к основной папке:", baseFolderSegments[0]);
-            return response.status(403).json({
-                error: 'У вас нет доступа к папке "Системы ТАУ - Общее"!',
-                errorCode: 'NO_ACCESS_TO_MAIN_FOLDER'
-            });
+        if (mainFolderCheck.status === 404) {
+            hasAccessToMainFolder = false;
+            warningMessage = "⚠️ Нет доступа к общей папке 'Системы ТАУ - Общее'. Файлы будут загружены в ваш личный аккаунт.";
+            console.warn(warningMessage);
+
+            // Меняем базовые сегменты для личного аккаунта
+            baseFolderSegments = [
+                'Фото ТАУ контроль',
+                folder
+            ];
         }
 
-        if (!mainFolderRes.ok) {
-            const errorText = await mainFolderRes.text();
-            console.error("❌ Ошибка при проверке основной папки:", mainFolderRes.status, errorText);
-            return response.status(403).json({
-                error: 'Не удается проверить доступ к основной папке',
-                errorCode: 'MAIN_FOLDER_CHECK_FAILED'
-            });
-        }
-
-        console.log("✅ Доступ к основной папке подтвержден");
-
-        // 2. Создаем остальные папки поэтапно (начиная со второй)
-        let currentPath = mainFolderPath;
-        for (let i = 1; i < baseFolderSegments.length; i++) {
+        // 2. Создаем папки поэтапно (важно для iPhone!)
+        let currentPath = '';
+        for (let i = 0; i < baseFolderSegments.length; i++) {
             const segment = baseFolderSegments[i];
-            currentPath += '/' + encodeURIComponent(segment.normalize('NFC'));
+            currentPath += (currentPath ? '/' : '') + encodeURIComponent(segment.normalize('NFC'));
 
             const checkUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${currentPath}`;
             console.log(`📁 Проверяем папку ${i + 1}/${baseFolderSegments.length}:`, segment);
@@ -102,17 +97,13 @@ export default async function handler(request, response) {
 
                 // Небольшая задержка для iOS
                 await new Promise(resolve => setTimeout(resolve, 200));
-            } else if (!checkRes.ok) {
-                const errorText = await checkRes.text();
-                console.error("❌ Ошибка при проверке папки:", checkRes.status, errorText);
-                throw new Error(`Failed to check folder: ${segment}`);
             }
         }
 
         const baseFolder = encodeYandexPath(baseFolderSegments);
         console.log("📂 baseFolder (итоговый):", baseFolder);
 
-        // 3. Формируем имя файла
+        // 2. Формируем имя файла
         const ext = fileName.includes(".")
             ? fileName.slice(fileName.lastIndexOf("."))
             : "";
@@ -120,7 +111,7 @@ export default async function handler(request, response) {
 
         console.log("📝 Имя файла:", { original: fileName, newFileName });
 
-        // 4. Получаем upload URL с правильно кодированным путем
+        // 3. Получаем upload URL с правильно кодированным путем
         const fullPath = `${baseFolder}/${encodeURIComponent(newFileName.normalize('NFC'))}`;
         const uploadUrlReq = `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${fullPath}&overwrite=true`;
 
@@ -147,11 +138,18 @@ export default async function handler(request, response) {
 
         if (!uploadData.href) throw new Error("Failed to get upload URL");
 
-        // 5. Возвращаем клиенту
-        response.status(200).json({
+        // 4. Возвращаем клиенту
+        const result = {
             uploadUrl: uploadData.href,
             newFileName
-        });
+        };
+
+        // Добавляем предупреждение если нет доступа к общей папке
+        if (warningMessage) {
+            result.warning = warningMessage;
+        }
+
+        response.status(200).json(result);
 
     } catch (err) {
         console.error("💥 Ошибка в get-upload-url:", err);
