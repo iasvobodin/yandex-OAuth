@@ -187,28 +187,43 @@ async function isReallyHeic(file: File): Promise<boolean> {
 // Вспомогательная функция для замены расширения
 function replaceExtension(filename: string, newExt: string) {
   const idx = filename.lastIndexOf(".");
-  return idx >= 0 ? filename.slice(0, idx) + "." + newExt : filename + "." + newExt;
+  return idx >= 0
+    ? filename.slice(0, idx) + "." + newExt
+    : filename + "." + newExt;
 }
 
 async function getFileFormat(file: File): Promise<string> {
   const header = new Uint8Array(await file.slice(0, 16).arrayBuffer());
   const ascii = new TextDecoder().decode(header);
-  
+
   // Проверяем на известные сигнатуры (магические числа)
-  if (ascii.includes("ftypheic") || ascii.includes("ftypheif") || ascii.includes("ftypheix")) {
-    return 'heic';
-  } else if (header[0] === 0xFF && header[1] === 0xD8) { // Проверка на JPEG
-    return 'jpeg';
-  } else if (header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4E && header[3] === 0x47) { // Проверка на PNG
-    return 'png';
-  } else if (header[0] === 0x47 && header[1] === 0x49 && header[2] === 0x46) { // Проверка на GIF
-    return 'gif';
-  } else if (ascii.includes("ftypmp4")) { // Проверка на MP4
-      return 'mp4';
+  if (
+    ascii.includes("ftypheic") ||
+    ascii.includes("ftypheif") ||
+    ascii.includes("ftypheix")
+  ) {
+    return "heic";
+  } else if (header[0] === 0xff && header[1] === 0xd8) {
+    // Проверка на JPEG
+    return "jpeg";
+  } else if (
+    header[0] === 0x89 &&
+    header[1] === 0x50 &&
+    header[2] === 0x4e &&
+    header[3] === 0x47
+  ) {
+    // Проверка на PNG
+    return "png";
+  } else if (header[0] === 0x47 && header[1] === 0x49 && header[2] === 0x46) {
+    // Проверка на GIF
+    return "gif";
+  } else if (ascii.includes("ftypmp4")) {
+    // Проверка на MP4
+    return "mp4";
   }
-  
+
   // Если не удалось определить по заголовку, возвращаем тип, который предоставил браузер
-  return file.type.split('/')[1] || 'unknown';
+  return file.type.split("/")[1] || "unknown";
 }
 
 const handleFileChange = async (event: Event) => {
@@ -219,20 +234,22 @@ const handleFileChange = async (event: Event) => {
     let fileToUpload: File = file;
     let thumbnail: string | null = null;
 
-
-
-      // Шаг 1: Создаем новый File-объект с гарантированным расширением
-        let newFileName = file.name;
-        const ff = await getFileFormat(file)
-        log(`ИМЯ ФАЙЛА ${newFileName|| 'НЕТ'}, ТИП ФАЙЛА ${file.type|| 'НЕТ'}, ${ff}`)
-        // Проверяем, есть ли точка в имени файла
-        if (newFileName.lastIndexOf('.') === -1) {
-            // Если расширения нет, добавляем его на основе MIME-типа
-            log('нет раcширения у файла')
-            if (file.type === "image/jpeg") {
-                newFileName = newFileName + '.jpeg';
-            }
-        }
+    // Шаг 1: Создаем новый File-объект с гарантированным расширением
+    let newFileName = file.name;
+    const ff = await getFileFormat(file);
+    log(
+      `ИМЯ ФАЙЛА ${newFileName || "НЕТ"}, ТИП ФАЙЛА ${
+        file.type || "НЕТ"
+      }, ${ff}`
+    );
+    // Проверяем, есть ли точка в имени файла
+    if (newFileName.lastIndexOf(".") === -1) {
+      // Если расширения нет, добавляем его на основе MIME-типа
+      log("нет раcширения у файла");
+      if (file.type === "image/jpeg") {
+        newFileName = newFileName + ".jpeg";
+      }
+    }
 
     try {
       // Проверяем HEIC / HEIF и конвертируем
@@ -245,12 +262,18 @@ const handleFileChange = async (event: Event) => {
             quality: 0.9,
           });
           if (jpegBlob) {
-            fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
-              type: "image/jpeg",
-            });
+            fileToUpload = new File(
+              [jpegBlob],
+              replaceExtension(file.name, "jpg"),
+              {
+                type: "image/jpeg",
+              }
+            );
             log(`✅ Конвертирован в JPEG: "${fileToUpload.name}"`);
           } else {
-            log(`❌ heic-to вернул null для "${file.name}", оставляем оригинал`);
+            log(
+              `❌ heic-to вернул null для "${file.name}", оставляем оригинал`
+            );
           }
         } catch (err) {
           log(`❌ Ошибка конвертации HEIC "${file.name}": ${err}`);
@@ -268,7 +291,9 @@ const handleFileChange = async (event: Event) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
           reader.onerror = () => {
-            log(`❌ Ошибка чтения файла "${cleanFileForOperations.name}" для превью`);
+            log(
+              `❌ Ошибка чтения файла "${cleanFileForOperations.name}" для превью`
+            );
             resolve(null);
           };
           reader.readAsDataURL(cleanFileForOperations);
@@ -277,7 +302,9 @@ const handleFileChange = async (event: Event) => {
         try {
           thumbnail = await createVideoThumbnail(cleanFileForOperations);
         } catch (e) {
-          log(`❌ Ошибка создания превью видео "${cleanFileForOperations.name}": ${e}`);
+          log(
+            `❌ Ошибка создания превью видео "${cleanFileForOperations.name}": ${e}`
+          );
         }
       }
 
@@ -289,7 +316,6 @@ const handleFileChange = async (event: Event) => {
         statusText: "⏳ Ожидает",
         thumbnail,
       });
-
     } catch (err: any) {
       log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
     }
@@ -316,10 +342,10 @@ const createVideoThumbnail = (file: File): Promise<string> => {
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/jpeg");
-        
+
         // Освобождаем URL после использования
         URL.revokeObjectURL(videoUrl);
-        
+
         resolve(dataUrl);
       } else {
         URL.revokeObjectURL(videoUrl); // Гарантированно освобождаем URL в случае ошибки
@@ -332,7 +358,6 @@ const createVideoThumbnail = (file: File): Promise<string> => {
     };
   });
 };
-
 
 const uploadFiles = async (): Promise<void> => {
   if (filesToUpload.value.length === 0) {
@@ -363,8 +388,34 @@ const uploadFiles = async (): Promise<void> => {
       });
 
       if (!getUrlRes.ok) {
-        const errorText = await getUrlRes.text();
-        throw new Error(`Failed to get upload URL: ${getUrlRes.status} ${errorText}`);
+        try {
+          // Пытаемся получить JSON с детальной информацией об ошибке
+          const errorData = await getUrlRes.json();
+
+          if (errorData.errorCode === "NO_ACCESS_TO_MAIN_FOLDER") {
+            throw new Error(
+              "У вас нет доступа к корпоративной папке. Обратитесь к администратору."
+            );
+          } else if (errorData.errorCode === "MAIN_FOLDER_CHECK_FAILED") {
+            throw new Error(
+              "Не удается проверить доступ к папке. Попробуйте позже."
+            );
+          } else {
+            throw new Error(
+              errorData.error || `Ошибка сервера: ${getUrlRes.status}`
+            );
+          }
+        } catch (jsonError) {
+          // Если не удалось распарсить JSON, пытаемся получить текст
+          try {
+            const errorText = await getUrlRes.text();
+            throw new Error(
+              `Ошибка загрузки файла: ${getUrlRes.status} ${errorText}`
+            );
+          } catch (textError) {
+            throw new Error(`Ошибка загрузки файла: ${getUrlRes.status}`);
+          }
+        }
       }
 
       const { uploadUrl, newFileName } = (await getUrlRes.json()) as {
@@ -387,7 +438,7 @@ const uploadFiles = async (): Promise<void> => {
           else reject(new Error(`Ошибка загрузки: ${xhr.status}`));
         };
         xhr.onerror = () => reject(new Error("Сетевая ошибка"));
-        
+
         // Отправляем файл
         xhr.send(fileForUpload);
       });
@@ -396,7 +447,6 @@ const uploadFiles = async (): Promise<void> => {
       fileItem.statusClass = "success";
       fileItem.statusText = "✅ Загружено";
       fileItem.progress = 100;
-
     } catch (err: any) {
       log(`❌ Ошибка при загрузке "${fileItem.name}": ${err.message}`);
       fileItem.statusClass = "error";
@@ -409,7 +459,6 @@ const uploadFiles = async (): Promise<void> => {
     fileInputRef.value.value = "";
   }
 };
-
 </script>
 
 <style scoped>

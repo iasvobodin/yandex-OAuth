@@ -43,11 +43,41 @@ export default async function handler(request, response) {
             folder
         ];
 
-        // 1. Создаем папки поэтапно (важно для iPhone!)
-        let currentPath = '';
-        for (let i = 0; i < baseFolderSegments.length; i++) {
+        // 1. Проверяем доступ к основной папке "Системы ТАУ - Общее"
+        const mainFolderPath = encodeURIComponent(baseFolderSegments[0].normalize('NFC'));
+        const mainFolderCheckUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${mainFolderPath}`;
+
+        console.log("🔐 Проверяем доступ к основной папке:", baseFolderSegments[0]);
+
+        const mainFolderRes = await fetch(mainFolderCheckUrl, {
+            method: "GET",
+            headers: { Authorization: `OAuth ${accessToken}` }
+        });
+
+        if (mainFolderRes.status === 404) {
+            console.error("❌ Нет доступа к основной папке:", baseFolderSegments[0]);
+            return response.status(403).json({
+                error: 'У вас нет доступа к папке "Системы ТАУ - Общее"!',
+                errorCode: 'NO_ACCESS_TO_MAIN_FOLDER'
+            });
+        }
+
+        if (!mainFolderRes.ok) {
+            const errorText = await mainFolderRes.text();
+            console.error("❌ Ошибка при проверке основной папки:", mainFolderRes.status, errorText);
+            return response.status(403).json({
+                error: 'Не удается проверить доступ к основной папке',
+                errorCode: 'MAIN_FOLDER_CHECK_FAILED'
+            });
+        }
+
+        console.log("✅ Доступ к основной папке подтвержден");
+
+        // 2. Создаем остальные папки поэтапно (начиная со второй)
+        let currentPath = mainFolderPath;
+        for (let i = 1; i < baseFolderSegments.length; i++) {
             const segment = baseFolderSegments[i];
-            currentPath += (currentPath ? '/' : '') + encodeURIComponent(segment.normalize('NFC'));
+            currentPath += '/' + encodeURIComponent(segment.normalize('NFC'));
 
             const checkUrl = `https://cloud-api.yandex.net/v1/disk/resources?path=${currentPath}`;
             console.log(`📁 Проверяем папку ${i + 1}/${baseFolderSegments.length}:`, segment);
@@ -72,13 +102,17 @@ export default async function handler(request, response) {
 
                 // Небольшая задержка для iOS
                 await new Promise(resolve => setTimeout(resolve, 200));
+            } else if (!checkRes.ok) {
+                const errorText = await checkRes.text();
+                console.error("❌ Ошибка при проверке папки:", checkRes.status, errorText);
+                throw new Error(`Failed to check folder: ${segment}`);
             }
         }
 
         const baseFolder = encodeYandexPath(baseFolderSegments);
         console.log("📂 baseFolder (итоговый):", baseFolder);
 
-        // 2. Формируем имя файла
+        // 3. Формируем имя файла
         const ext = fileName.includes(".")
             ? fileName.slice(fileName.lastIndexOf("."))
             : "";
@@ -86,7 +120,7 @@ export default async function handler(request, response) {
 
         console.log("📝 Имя файла:", { original: fileName, newFileName });
 
-        // 3. Получаем upload URL с правильно кодированным путем
+        // 4. Получаем upload URL с правильно кодированным путем
         const fullPath = `${baseFolder}/${encodeURIComponent(newFileName.normalize('NFC'))}`;
         const uploadUrlReq = `https://cloud-api.yandex.net/v1/disk/resources/upload?path=${fullPath}&overwrite=true`;
 
@@ -113,7 +147,7 @@ export default async function handler(request, response) {
 
         if (!uploadData.href) throw new Error("Failed to get upload URL");
 
-        // 4. Возвращаем клиенту
+        // 5. Возвращаем клиенту
         response.status(200).json({
             uploadUrl: uploadData.href,
             newFileName
