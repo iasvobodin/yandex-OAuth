@@ -280,38 +280,39 @@ const handleFileChange = async (event: Event) => {
         }
       }
 
-      // Создаем превью, используя FileReader
-      if (fileToUpload.type.startsWith("image/")) {
+      // Создаем новый, "чистый" файл для всех последующих операций
+      const cleanFileForOperations = new File([fileToUpload], fileToUpload.name, {
+        type: fileToUpload.type,
+      });
+
+      // Создаем превью, используя только cleanFileForOperations
+      if (cleanFileForOperations.type.startsWith("image/")) {
         thumbnail = await new Promise<string | null>((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result as string);
           reader.onerror = () => {
-            log(`❌ Ошибка чтения файла "${fileToUpload.name}" для превью`);
+            log(`❌ Ошибка чтения файла "${cleanFileForOperations.name}" для превью`);
             resolve(null);
           };
-          reader.readAsDataURL(fileToUpload);
+          reader.readAsDataURL(cleanFileForOperations);
         });
-      } else if (fileToUpload.type.startsWith("video/")) {
+      } else if (cleanFileForOperations.type.startsWith("video/")) {
         try {
-          thumbnail = await createVideoThumbnail(fileToUpload);
+          thumbnail = await createVideoThumbnail(cleanFileForOperations);
         } catch (e) {
-          log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
+          log(`❌ Ошибка создания превью видео "${cleanFileForOperations.name}": ${e}`);
         }
       }
 
-      // Создаем новый, "чистый" файл для загрузки
-      const newFile = new File([fileToUpload], fileToUpload.name, {
-        type: fileToUpload.type,
-      });
-
       filesToUpload.value.push({
-        file: newFile,
-        name: newFile.name,
+        file: cleanFileForOperations, // Сохраняем "чистый" файл
+        name: cleanFileForOperations.name,
         progress: 0,
         statusClass: "waiting",
         statusText: "⏳ Ожидает",
         thumbnail,
       });
+
     } catch (err: any) {
       log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
     }
@@ -322,6 +323,11 @@ const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
     video.preload = "metadata";
+
+    // Создаем URL для видео и сразу сохраняем ссылку на него
+    const videoUrl = URL.createObjectURL(file);
+    video.src = videoUrl;
+
     video.onloadedmetadata = () => {
       video.currentTime = 1;
     };
@@ -333,19 +339,20 @@ const createVideoThumbnail = (file: File): Promise<string> => {
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL("image/jpeg");
-        video.onloadeddata = () => {
-          URL.revokeObjectURL(video.src);
-        };
-        // URL.revokeObjectURL(video.src);
+        
+        // Освобождаем URL после использования
+        URL.revokeObjectURL(videoUrl);
+        
         resolve(dataUrl);
       } else {
+        URL.revokeObjectURL(videoUrl); // Гарантированно освобождаем URL в случае ошибки
         reject(new Error("Не удалось получить контекст canvas"));
       }
     };
-    video.onerror = () => {
+    video.onerror = (e) => {
+      URL.revokeObjectURL(videoUrl); // Гарантированно освобождаем URL в случае ошибки
       reject(new Error("Ошибка создания превью видео."));
     };
-    video.src = URL.createObjectURL(file);
   });
 };
 
@@ -363,16 +370,16 @@ const uploadFiles = async (): Promise<void> => {
       fileItem.statusText = "⬆ Загрузка...";
       fileItem.progress = 0;
 
-      const file = fileItem.file;
-      const fileForUpload = new File([file], file.name, { type: file.type }); // клонируем, чтобы не было body used already
+      // Используем "чистый" файл, который уже готов к загрузке
+      const fileForUpload = fileItem.file;
 
       // Получаем ссылку на upload
       const getUrlRes = await fetch(GET_UPLOAD_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fileName: file.name,
-          fileType: file.type,
+          fileName: fileForUpload.name,
+          fileType: fileForUpload.type,
           folder: folderName,
           subfolder: subfolderName,
         }),
@@ -388,7 +395,7 @@ const uploadFiles = async (): Promise<void> => {
         newFileName: string;
       };
 
-      log(`🔗 Upload URL для "${file.name}": ${uploadUrl}`);
+      log(`🔗 Upload URL для "${fileForUpload.name}": ${uploadUrl}`);
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -403,10 +410,12 @@ const uploadFiles = async (): Promise<void> => {
           else reject(new Error(`Ошибка загрузки: ${xhr.status}`));
         };
         xhr.onerror = () => reject(new Error("Сетевая ошибка"));
+        
+        // Отправляем файл
         xhr.send(fileForUpload);
       });
 
-      log(`✅ Файл "${file.name}" загружен как "${newFileName}"`);
+      log(`✅ Файл "${fileForUpload.name}" загружен как "${newFileName}"`);
       fileItem.statusClass = "success";
       fileItem.statusText = "✅ Загружено";
       fileItem.progress = 100;
