@@ -257,6 +257,19 @@ const handleFileChange = async (event: Event) => {
     let fileToUpload: File = file;
     let thumbnail: string | null = null;
 
+
+
+      // Шаг 1: Создаем новый File-объект с гарантированным расширением
+        let newFileName = file.name;
+        // Проверяем, есть ли точка в имени файла
+        if (newFileName.lastIndexOf('.') === -1) {
+            // Если расширения нет, добавляем его на основе MIME-типа
+            log('нет разширения у файла')
+            if (file.type === "image/jpeg") {
+                newFileName = newFileName + '.jpeg';
+            }
+        }
+
     try {
       // Проверяем HEIC / HEIF и конвертируем
       if (await isReallyHeic(file)) {
@@ -281,7 +294,7 @@ const handleFileChange = async (event: Event) => {
       }
 
       // Создаем новый, "чистый" файл для всех последующих операций
-      const cleanFileForOperations = new File([fileToUpload], fileToUpload.name, {
+      const cleanFileForOperations = new File([fileToUpload], newFileName, {
         type: fileToUpload.type,
       });
 
