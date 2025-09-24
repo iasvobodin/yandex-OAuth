@@ -190,6 +190,65 @@ function replaceExtension(filename: string, newExt: string) {
   return idx >= 0 ? filename.slice(0, idx) + "." + newExt : filename + "." + newExt;
 }
 
+// const handleFileChange = async (event: Event) => {
+//   filesToUpload.value = [];
+//   const files = Array.from((event.target as HTMLInputElement).files || []);
+
+//   for (const file of files) {
+//     let fileToUpload: File = file;
+//     let thumbnail: string | null = null;
+
+//     try {
+//       // Проверяем HEIC / HEIF
+//       if (await isReallyHeic(file)) {
+//         log(`⚠ Подозрение на HEIC: "${file.name}"`);
+//         try {
+//           const jpegBlob = await heicTo({
+//             blob: file,
+//             type: "image/jpeg",
+//             quality: 0.9
+//           });
+//           if (jpegBlob) {
+//             fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
+//               type: "image/jpeg",
+//             });
+//             log(`✅ Конвертирован в JPEG: "${fileToUpload.name}"`);
+//           } else {
+//             log(`❌ heic-to вернул null для "${file.name}", оставляем оригинал`);
+//           }
+//         } catch (err) {
+//           log(`❌ Ошибка конвертации HEIC "${file.name}": ${err}`);
+//         }
+//       }
+
+//       // Создаём превью
+//       if (fileToUpload.type.startsWith("image/")) {
+//         thumbnail = URL.createObjectURL(fileToUpload); // только для превью
+//       } else if (fileToUpload.type.startsWith("video/")) {
+//         try {
+//           thumbnail = await createVideoThumbnail(fileToUpload);
+//         } catch (e) {
+//           log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
+//         }
+//       }
+//       const newBlob = fileToUpload.slice(0, fileToUpload.size, fileToUpload.type);
+//       const newFile = new File([newBlob], fileToUpload.name, { type: fileToUpload.type });
+
+//       filesToUpload.value.push({
+//         file: newFile,
+//         name: fileToUpload.name,
+//         progress: 0,
+//         statusClass: "waiting",
+//         statusText: "⏳ Ожидает",
+//         thumbnail,
+//       });
+
+//     } catch (err: any) {
+//       log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
+//     }
+//   }
+// };
+
 const handleFileChange = async (event: Event) => {
   filesToUpload.value = [];
   const files = Array.from((event.target as HTMLInputElement).files || []);
@@ -199,14 +258,14 @@ const handleFileChange = async (event: Event) => {
     let thumbnail: string | null = null;
 
     try {
-      // Проверяем HEIC / HEIF
+      // Проверяем HEIC / HEIF и конвертируем
       if (await isReallyHeic(file)) {
         log(`⚠ Подозрение на HEIC: "${file.name}"`);
         try {
           const jpegBlob = await heicTo({
             blob: file,
             type: "image/jpeg",
-            quality: 0.9
+            quality: 0.9,
           });
           if (jpegBlob) {
             fileToUpload = new File([jpegBlob], replaceExtension(file.name, "jpg"), {
@@ -221,9 +280,17 @@ const handleFileChange = async (event: Event) => {
         }
       }
 
-      // Создаём превью
+      // Создаем превью, используя FileReader
       if (fileToUpload.type.startsWith("image/")) {
-        thumbnail = URL.createObjectURL(fileToUpload); // только для превью
+        thumbnail = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = () => {
+            log(`❌ Ошибка чтения файла "${fileToUpload.name}" для превью`);
+            resolve(null);
+          };
+          reader.readAsDataURL(fileToUpload);
+        });
       } else if (fileToUpload.type.startsWith("video/")) {
         try {
           thumbnail = await createVideoThumbnail(fileToUpload);
@@ -231,24 +298,25 @@ const handleFileChange = async (event: Event) => {
           log(`❌ Ошибка создания превью видео "${fileToUpload.name}": ${e}`);
         }
       }
-      const newBlob = fileToUpload.slice(0, fileToUpload.size, fileToUpload.type);
-      const newFile = new File([newBlob], fileToUpload.name, { type: fileToUpload.type });
-      
+
+      // Создаем новый, "чистый" файл для загрузки
+      const newFile = new File([fileToUpload], fileToUpload.name, {
+        type: fileToUpload.type,
+      });
+
       filesToUpload.value.push({
         file: newFile,
-        name: fileToUpload.name,
+        name: newFile.name,
         progress: 0,
         statusClass: "waiting",
         statusText: "⏳ Ожидает",
         thumbnail,
       });
-
     } catch (err: any) {
       log(`❌ Ошибка обработки файла "${file.name}": ${err}`);
     }
   }
 };
-
 
 const createVideoThumbnail = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
